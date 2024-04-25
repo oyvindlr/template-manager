@@ -1,0 +1,5 @@
+*/__pycache__/*
+%project%.egg-info/*
+dist/*
+%project%/README.html
+__pycache__/*

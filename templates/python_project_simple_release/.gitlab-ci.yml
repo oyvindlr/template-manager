@@ -1,0 +1,88 @@
+stages:
+  - test
+  - build
+  - prepare
+  - release
+  - deploy
+
+default:
+  image: my_python_docker:latest
+
+test-job:
+  stage: test
+  script:
+    - pytest --cov=%project% --cov-report term --cov-report xml:coverage.xml --junitxml=testreport.xml tests/
+  coverage: '/(?i)total.*? (100(?:\.0+)?\\%|[1-9]?\d(?:\.\d+)?\\%)$/'
+  artifacts:
+    when: always
+    reports:
+      junit: testreport.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+        
+build-job:
+  stage: build
+  script:
+    - python3 -m build
+  artifacts:
+    when: on_success    
+    expire_in: 30 days
+    paths:
+      - dist/* 
+
+prepare-release:
+  stage: prepare
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - %project%/VERSION
+  script:
+    - VERSION=$(cat %project%/VERSION)
+    - API_ENDPOINT_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/repository/changelog?version=$VERSION&branch=${CI_COMMIT_BRANCH}"        
+    - echo $API_ENDPOINT_URL
+    - AUTH_HEADER="PRIVATE-TOKEN:${CI_API_TOKEN}"
+    - CHANGELOG_JSON=$(curl -s -H "$AUTH_HEADER" "$API_ENDPOINT_URL")
+    - echo $CHANGELOG_JSON
+    - echo $CHANGELOG_JSON | jq -r .notes > release_notes.md
+    - echo "VERSION=$VERSION" >> variables.env
+  artifacts:
+    reports:
+      dotenv: variables.env
+    paths:
+      - release_notes.md
+
+release-job:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - %project%/VERSION
+  needs:
+    - job: prepare-release
+      artifacts: true
+  when: on_success
+  script:
+    echo "Creating release version $VERSION"
+  release:
+    name: "%project% v. $VERSION"
+    description: release_notes.md
+    tag_name: $VERSION
+    
+
+deploy-release:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - %project%/VERSION
+    - when: manual
+      allow_failure: true
+  script:
+    - pip install twine
+    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/4/packages/pypi dist/*
+  environment: production
+  
+  
+

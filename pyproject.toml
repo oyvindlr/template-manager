@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+
+[project]
+name = "template-generator"
+description = "A small program to generate templates by replacing key names  in files and file/folder names by specific values"
+authors= [{name = "Øyvind Rørtveit", email = "oyvind.rortveit@naxystech.com"}]
+dynamic = ["version"]
+readme = "README.md"
+
+[project.scripts]
+template-gen = "template_generator.project_from_template:entry_point"
+
+[tool.setuptools.dynamic]
+version = {file = "template_generator/VERSION"}
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

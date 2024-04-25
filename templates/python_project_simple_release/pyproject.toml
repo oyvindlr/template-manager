@@ -1,0 +1,20 @@
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+
+[project]
+name = "%project%"
+description = "%description%"
+authors= [{name = "%author%", email = "%email%"}]
+# Add your dependent packages here
+# dependencies = ["numpy", "scipy"]
+dynamic = ["version"]
+readme = "README.md"
+
+[tool.setuptools.dynamic]
+version = {file = "%project%/VERSION"}
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

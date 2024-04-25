@@ -1,0 +1,25 @@
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+
+[project]
+name = "%project%"
+#your dependencies here
+#dependencies = ["toml", "pymodbus", "requests"]
+authors = [{name = "%author%", email = "%email%"},]
+dynamic = ["version"]
+description = "%description%"
+readme = "README.md"
+
+[project.scripts]
+#Uncomment and replace mymodule:entrypoint by your module and an entry point (a function taking no parameters) to add a command named "%project%" to your command line
+#%project% = "%project%.mymodule:entry_point"
+
+
+[tool.setuptools-git-versioning]
+enabled = true
+
+[build-system]
+requires = ["setuptools>=61", "markdown", "setuptools-git-versioning<2"]
+build-backend = "setuptools.build_meta"
