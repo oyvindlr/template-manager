@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 _content_var_pattern = re.compile(r"(?<!\\)%[^%]*(?<!\\)%")
-_filename_var_pattern = re.compile(r"(?<!_)%[^%]*(?<!_)%")
+_filename_var_pattern = re.compile(r"(?<!\^)%[^%]*(?<!\^)%")
 
 def _find_vars_in_file_names(filelist) -> set:
     vars_ = []
@@ -38,11 +38,11 @@ def _list_of_files(path):
     file_iterator = glob.glob(str(path / "**"), recursive=True, include_hidden=True)
     return list(file_iterator)
     
-def _unescape(string:str):
+def _unescape_content(string:str):
     return string.replace(r"\%", "%")
 
 def _unescape_filename(string:str):
-    return string.replace(r"%", "%")
+    return string.replace(r"^%", "%")
 
     
 def _add_free_vars_to_args(free_vars, args):
@@ -67,6 +67,7 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
         filepath = Path(file)
         relfile = filepath.relative_to(files_basedir)        
         newfile = _replace_variables(str(relfile), vars, _filename_var_pattern)
+        newfile = _unescape_filename(newfile)
         newfilepath = outdir / newfile
         Path(os.path.dirname(newfilepath)).mkdir(parents = True, exist_ok = True)
         if not filepath.is_dir():
@@ -76,7 +77,7 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
 def _replace_file_contents(file, vars):
     content = Path(file).read_text()
     newcontent = _replace_variables(content, vars, _content_var_pattern)
-    newcontent = _unescape(newcontent)
+    newcontent = _unescape_content(newcontent)
     Path(file).write_text(newcontent)
 
 

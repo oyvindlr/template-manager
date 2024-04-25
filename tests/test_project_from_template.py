@@ -62,18 +62,18 @@ def test_replace_file_names(tmp_path):
     args.var5 = "bar"
     args.hei = "irrelevant"
     
-    project_from_template._replace_filenames(["tests/data/%var4%-%var5%_%hei%.txt"], args, tmp_path, "tests")
+    project_from_template._replace_filenames(["tests/data/%var4%-%var5%^%hei%.txt"], args, tmp_path, "tests")
 
-    assert (tmp_path / "data/foo-bar_%hei%.txt").exists()
+    assert (tmp_path / "data/foo-bar%hei%.txt").exists()
 
 def test_escape_file_names(tmp_path):
     args = argparse.Namespace()
     args.var4 = "foo"
     args.var5 = "bar"
     
-    project_from_template._replace_filenames(["tests/data/_%var4%_%var5%_.txt"], args, tmp_path, "tests")
+    project_from_template._replace_filenames(["tests/data/^%var4^%%var5%.txt"], args, tmp_path, "tests")
 
-    assert (tmp_path / "data/_%var4%_%var5%_.txt").exists()
+    assert (tmp_path / "data/%var4%bar.txt").exists()
 
 def test_replace_file_content(tmp_path):
     args = argparse.Namespace()
