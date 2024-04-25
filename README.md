@@ -1,6 +1,6 @@
-# Templates and template generator
+# Template generator
 
-A small program to generate templates by replacing key names in files and file/folder names by specific values.
+A small program to generate templates by replacing key names in files and file/folder names by specific values. Templates to use with the template generator can be found in the [templates project](http://devtools/general/templates).
 
 ### Creating a new project from an existing template
 Usage:
