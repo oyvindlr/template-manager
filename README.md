@@ -34,4 +34,4 @@ You can use any keywords you wish. The keywords "project", "description", "autho
 ```template-gen --variables my_var_1:"Hello world" my_var_2:somethingelse ...```
 
 ## Important note on creating your own template:
-Since the character "%" is used for variable names, any occurences of this character that should not be replaced need to be escaped. In the file contents, it should be escaped as "\%". Since "\" is illegal in file names, the percent sign should be escaped as "_%" in file names (only relevant if any of your files should actually contain the percent-sign after creation). 
+Since the character "%" is used for variable names, any occurences of this character that should not be replaced need to be escaped. In the file contents, it should be escaped as "\\%". Since "\\" is illegal in file names, the percent sign should be escaped as "_%" in file names (only relevant if any of your files should actually contain the percent-sign after creation). 
