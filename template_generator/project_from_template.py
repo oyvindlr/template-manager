@@ -121,17 +121,18 @@ def main(argv):
 
 
 def parse_command_line_arguments(argv):
-    description = "Use this program to generate a new project from one of the templates found in the same folder, replacing keys with values within the files."
+    program_name = "Create project from template"
+    description = "Use this program to generate a new project from a template."
     if gooey_present:
         #GooeyParser extends argparse.ArgumentParser. You can still use this as a command line parser, but it takes the additional "widget" argument for use in the GUI
-        ap = GooeyParser(description=description)
+        ap = GooeyParser(prog=program_name,description=description)
         widgetArg = {'widget':'DirChooser'}
     else:
-        ap = argparse.ArgumentParser(description=description)    
+        ap = argparse.ArgumentParser(prog=program_name,description=description)    
         widgetArg = {}
     ap.add_argument("project",  help="Name of the new project")
     ap.add_argument("template_path",  type=Path, help="Path to folder containing template to create project from", **widgetArg)
-    ap.add_argument("output_path", type=Path, help="New path to created project", **widgetArg)
+    ap.add_argument("output_path", type=Path, help="Path to new project to be created", **widgetArg)
     ap.add_argument("--description", help="Description of the project")
     ap.add_argument("--author", help = "Name of the author of the project")
     ap.add_argument("--email", help = "E-mail of the author of the project")
@@ -144,7 +145,7 @@ def entry_point():
     main(sys.argv[1:])
 
 if gooey_present:
-    @Gooey
+    @Gooey(required_cols=1, default_size=(500, 780), program_name="Create project from template")
     def entry_point_gui(): #Separate entry point for the GUI
         entry_point()
 else:
