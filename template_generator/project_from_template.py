@@ -3,8 +3,8 @@ import shutil
 import os
 import glob
 import os.path
-import argparse
 import re
+from gooey import Gooey, GooeyParser #Create GUI from cmd-line app
 from pathlib import Path
 
 
@@ -81,18 +81,16 @@ def _replace_file_contents(file, vars):
     Path(file).write_text(newcontent)
 
 
-
-
 def main(argv):
     args = parse_command_line_arguments(argv)
 
     
-    if not args.template_folder.exists():
-        print(f"Template folder '{args.template_folder}' not found")
+    if not args.template_path.exists():
+        print(f"Template folder '{args.template_path}' not found")
         sys.exit(1)
     
     # Find all variables to be replaced in the template
-    files = _list_of_files(args.template_folder)
+    files = _list_of_files(args.template_path)
     required_vars = _find_required_vars(files)
     if args.variables:
         _add_free_vars_to_args(args.variables, args)
@@ -102,19 +100,22 @@ def main(argv):
         print(e)
         sys.exit(1)
 
-    _replace_filenames(files, args, args.output_path, args.template_folder)
+    _replace_filenames(files, args, args.output_path, args.template_path)
 
     newfiles = _list_of_files(args.output_path)
 
     for file in newfiles:
         if not Path(file).is_dir():
             _replace_file_contents(file, args)
+    print(f"New project created successfully in directory {args.output_path}")
+
 
 def parse_command_line_arguments(argv):
-    ap = argparse.ArgumentParser(description="Use this program to generate a new project from one of the templates found in the same folder, replacing keys with values within the files.")
-    ap.add_argument("template_folder", type=Path, help="Folder containing template to create project from")
+    #GooeyParser extends argparse.ArgumentParser. You can still use this as a command line parser, but it takes the additional "widget" argument for use in the GUI
+    ap = GooeyParser(description="Use this program to generate a new project from one of the templates found in the same folder, replacing keys with values within the files.")
+    ap.add_argument("template_path",  type=Path, help="Path to folder containing template to create project from", widget = 'DirChooser')
     ap.add_argument("project",  help="Name of the new project")
-    ap.add_argument("output_path", type=Path, help="New path to created project")
+    ap.add_argument("output_path", type=Path, help="New path to created project", widget = 'DirChooser')
     ap.add_argument("--description", help="Description of the project")
     ap.add_argument("--author", help = "Name of the author of the project")
     ap.add_argument("--email", help = "E-mail of the author of the project")
@@ -126,6 +127,9 @@ def parse_command_line_arguments(argv):
 def entry_point():
     main(sys.argv[1:])
 
+@Gooey
+def entry_point_gui(): #Separate entry point for the GUI
+    entry_point()
 
 if __name__ == "__main__":
     entry_point()
