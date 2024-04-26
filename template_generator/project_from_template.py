@@ -12,20 +12,20 @@ try:
 except:
     gooey_present = False
 
-_content_var_pattern = re.compile(r"(?<!\\)%[^%]*(?<!\\)%")
-_filename_var_pattern = re.compile(r"(?<!\^)%[^%]*(?<!\^)%")
+_CONTENT_PATTERN = re.compile(r"(?<!\\)%[^%]*(?<!\\)%")
+_FILENAME_PATTERN = re.compile(r"(?<!\^)%[^%]*(?<!\^)%")
 
 def _find_vars_in_file_names(filelist) -> set:
     vars_ = []
     for file in filelist:
-        vars_.extend(re.findall(_filename_var_pattern, file))
+        vars_.extend(re.findall(_FILENAME_PATTERN, file))
     vars_ = [var.strip('%') for var in vars_]
     return set(vars_)
 
 def _find_vars_in_file(filename):
     with open(filename) as f:
         content = f.read()
-        vars_ = re.findall(_content_var_pattern, content)
+        vars_ = re.findall(_CONTENT_PATTERN, content)
         vars_ = [var.strip('%') for var in vars_]
         vars_ = set(vars_)
     return vars_
@@ -70,7 +70,7 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
     for file in files:
         filepath = Path(file)
         relfile = filepath.relative_to(files_basedir)        
-        newfile = _replace_variables(str(relfile), vars, _filename_var_pattern)
+        newfile = _replace_variables(str(relfile), vars, _FILENAME_PATTERN)
         newfile = _unescape_filename(newfile)
         newfilepath = outdir / newfile
         Path(os.path.dirname(newfilepath)).mkdir(parents = True, exist_ok = True)
@@ -80,10 +80,14 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
 
 def _replace_file_contents(file, vars):
     content = Path(file).read_text()
-    newcontent = _replace_variables(content, vars, _content_var_pattern)
+    newcontent = _replace_variables(content, vars, _CONTENT_PATTERN)
     newcontent = _unescape_content(newcontent)
     Path(file).write_text(newcontent)
 
+def _output_path_should_not_exist(output_path:Path, project_name:str):
+    if output_path.exists():
+        return output_path / project_name
+    return output_path
 
 def main(argv):
     args = parse_command_line_arguments(argv)
@@ -104,6 +108,8 @@ def main(argv):
         print(e)
         sys.exit(1)
 
+    args.output_path = _output_path_should_not_exist(args.output_path, args.project)
+
     _replace_filenames(files, args, args.output_path, args.template_path)
 
     newfiles = _list_of_files(args.output_path)
@@ -119,12 +125,13 @@ def parse_command_line_arguments(argv):
     if gooey_present:
         #GooeyParser extends argparse.ArgumentParser. You can still use this as a command line parser, but it takes the additional "widget" argument for use in the GUI
         ap = GooeyParser(description=description)
+        widgetArg = {'widget':'DirChooser'}
     else:
-        ap = argparse.ArgumentParser(description=description)
-        
-    ap.add_argument("template_path",  type=Path, help="Path to folder containing template to create project from", widget = 'DirChooser')
+        ap = argparse.ArgumentParser(description=description)    
+        widgetArg = {}
     ap.add_argument("project",  help="Name of the new project")
-    ap.add_argument("output_path", type=Path, help="New path to created project", widget = 'DirChooser')
+    ap.add_argument("template_path",  type=Path, help="Path to folder containing template to create project from", **widgetArg)
+    ap.add_argument("output_path", type=Path, help="New path to created project", **widgetArg)
     ap.add_argument("--description", help="Description of the project")
     ap.add_argument("--author", help = "Name of the author of the project")
     ap.add_argument("--email", help = "E-mail of the author of the project")
