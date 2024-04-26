@@ -4,9 +4,13 @@ import os
 import glob
 import os.path
 import re
-from gooey import Gooey, GooeyParser #Create GUI from cmd-line app
+import argparse
 from pathlib import Path
-
+try:
+    from gooey import Gooey, GooeyParser #Create GUI from cmd-line app
+    gooey_present = True
+except:
+    gooey_present = False
 
 _content_var_pattern = re.compile(r"(?<!\\)%[^%]*(?<!\\)%")
 _filename_var_pattern = re.compile(r"(?<!\^)%[^%]*(?<!\^)%")
@@ -111,8 +115,13 @@ def main(argv):
 
 
 def parse_command_line_arguments(argv):
-    #GooeyParser extends argparse.ArgumentParser. You can still use this as a command line parser, but it takes the additional "widget" argument for use in the GUI
-    ap = GooeyParser(description="Use this program to generate a new project from one of the templates found in the same folder, replacing keys with values within the files.")
+    description = "Use this program to generate a new project from one of the templates found in the same folder, replacing keys with values within the files."
+    if gooey_present:
+        #GooeyParser extends argparse.ArgumentParser. You can still use this as a command line parser, but it takes the additional "widget" argument for use in the GUI
+        ap = GooeyParser(description=description)
+    else:
+        ap = argparse.ArgumentParser(description=description)
+        
     ap.add_argument("template_path",  type=Path, help="Path to folder containing template to create project from", widget = 'DirChooser')
     ap.add_argument("project",  help="Name of the new project")
     ap.add_argument("output_path", type=Path, help="New path to created project", widget = 'DirChooser')
@@ -127,9 +136,14 @@ def parse_command_line_arguments(argv):
 def entry_point():
     main(sys.argv[1:])
 
-@Gooey
-def entry_point_gui(): #Separate entry point for the GUI
-    entry_point()
+if gooey_present:
+    @Gooey
+    def entry_point_gui(): #Separate entry point for the GUI
+        entry_point()
+else:
+    def entry_point_gui():
+        print("Gooey is required to run the GUI. Type \"pip install gooey\" to install it")
+        sys.exit(1)
 
 if __name__ == "__main__":
     entry_point()
