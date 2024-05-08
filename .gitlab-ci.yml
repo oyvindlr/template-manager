@@ -5,6 +5,9 @@ stages:
   - release
   - deploy
 
+variables:
+  GIT_STRATEGY: clone #The "git reinitialize" does not work properly, because we have a ".git" folder within the test repo in tests/data
+
 default:
   image: my_python_docker:latest
 

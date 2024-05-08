@@ -23,7 +23,6 @@ usage: template-gen [-h] [--description DESCRIPTION] [--author AUTHOR] [--email 
 Use this program to generate a new project from one of the templates found in the same folder, replacing keys with values within the files.
 
 positional arguments:
-  template_folder               Folder containing template to create project from
   project                       Name of the new project
   output_path                   New path to created project
 
@@ -34,6 +33,10 @@ options:
   --email EMAIL                 E-mail of the author of the project
   --variables [VARIABLES ...]   Other variables used for replacing values in the template. 
                                 List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'
+  --git-repo REPO_LINK          Git repository link to template (either git://<repo_url>.git or http://<repo_url>.git)
+  --git-commit COMMIT_HASH      Commit hash if not creating from the head of the default git branch
+  --git-folder FOLDER           Folder under the git repo where the template is located
+  --template-folder FOLDER      Folder containing template to create project from if not creating from git repo
 ```
 
 ### GUI
