@@ -25,11 +25,18 @@ def git_test_repo_direct_path(): #PROBLEMATIC: If something goes wrong, we may e
     yield pathstr
     os.rename(path / ".git", path / "gitdir")
 
+@pytest.fixture
+def another_template_path(tmp_path_factory):
+    oldpath = Path("./tests/data/another_template")
+    newpath = tmp_path_factory.mktemp("templatecopy")
+    shutil.copytree(oldpath, newpath, dirs_exist_ok=True) 
+    return newpath
+
 
 @pytest.fixture
 def defaultargs(tmp_path):
     args = argparse.Namespace()
-    args.template_path = Path("./tests/data/another_template")
+    args.template_path = None
     args.output_path = tmp_path
     args.project = "MyTestProject"
     args.description = "A description"
@@ -41,6 +48,10 @@ def defaultargs(tmp_path):
     args.git_folder = None
     args.settings_toml = None
     return args
+
+
+def get_toml(tmp_path, defaultargs):
+    return toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
 """
 These are tests of private functions, and not the API.
@@ -142,10 +153,6 @@ def test_clone_repo(tmp_path, git_test_repo_path):
 
     assert (tmp_path / r"%project%-file.txt").exists()
 
-    #Also check that the .git directory is removed
-
-    assert not (tmp_path / ".git").exists()
-
 def test_clone_repo_specific_commit(tmp_path, git_test_repo_path):
     args = argparse.Namespace()
     args.git_repo = git_test_repo_path
@@ -183,8 +190,10 @@ These are tests of the API, and should only be changed if the
 functionality is changed
 """
 
-def test_new_project_contains_toml_file(tmp_path, defaultargs):
+def test_new_project_contains_toml_file(tmp_path, defaultargs, another_template_path):
     
+    defaultargs.template_path = another_template_path
+
     project_from_template.main(defaultargs)
 
     assert (tmp_path / defaultargs.project).exists()
@@ -228,6 +237,7 @@ def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_
 
 def test_exception_when_having_both_git_repo_and_source_dir(defaultargs):
     defaultargs.git_repo = "git://google.com/myrepo.git"
+    defaultargs.template_path = "tests/data/another_template"
 
     with pytest.raises(project_from_template.TemplateError, match="^.*[Ee]ither.*repo.*$"):
         project_from_template.main(defaultargs)
@@ -260,7 +270,8 @@ def test_finds_commit_if_local_source_is_repo(defaultargs, tmp_path, git_test_re
 @pytest.mark.skipif(not sys.platform.startswith("win"), reason="Depends on remote repo.")
 def test_remote_repo(defaultargs, tmp_path):
     defaultargs.template_path = None
-    defaultargs.git_repo = "git@devtools:info-group/gitlab-wiki.git"
+    #defaultargs.git_repo = "git@devtools:info-group/gitlab-wiki.git"
+    defaultargs.git_repo = "http://devtools/info-group/gitlab-wiki.git"
 
     project_from_template.main(defaultargs)
 
@@ -311,10 +322,26 @@ def test_dont_use_origin_if_doesnt_have_commit(defaultargs, tmp_path, tmp_path_f
 
     assert tomlfile["git_repo"] == Path(newpath).as_posix()
 
+def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test_repo_path):
+    defaultargs.template_path = Path(git_test_repo_path)
+
+    project_from_template.main(defaultargs)
+
+    assert not (tmp_path / defaultargs.project / ".git").exists()
     
 
 
+@pytest.mark.skip(reason="This test only works if there are no local changes, and the\
+                  current repo is in sync with origin, and assumes that origin\
+                  is devtools/python/template_generator")
+def test_remote_url_is_correct_when_read_from_local_repo(defaultargs, tmp_path):
+    defaultargs.template_path = Path("tests/data/another_template")
 
+    project_from_template.main(defaultargs)
+
+    tomlfile = get_toml(tmp_path, defaultargs)
+
+    assert tomlfile["git_repo"] == "http://devtools/python/template-generator.git"
 
 
     

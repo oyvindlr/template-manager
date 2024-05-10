@@ -13,7 +13,7 @@ readme = "README.md"
 
 [project.scripts]
 template-gen = "template_generator.project_from_template:entry_point"
-template-gui = "template_generator.project_from_template:entry_point_gui"
+template-gui = "template_generator.template_generator_gui:main"
 
 [tool.setuptools.dynamic]
 version = {file = "template_generator/VERSION"}
