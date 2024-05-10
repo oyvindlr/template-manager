@@ -36,10 +36,10 @@ def _create_settings_file(project_path: Path, args):
         toml.dump(d, f)
 
 
-def _find_vars_in_file_names(filelist) -> set:
+def _find_vars_in_file_names(filelist:list[Path]) -> set:
     vars_ = []
     for file in filelist:
-        vars_.extend(re.findall(_FILENAME_PATTERN, file))
+        vars_.extend(re.findall(_FILENAME_PATTERN, str(file)))
     vars_ = [var.strip('%') for var in vars_]
     return set(vars_)
 
@@ -57,15 +57,23 @@ def _find_vars_in_file(filename):
 def _find_required_vars(files):
     all_vars = _find_vars_in_file_names(files)
     for file in files:
-        if not Path(file).is_dir():
+        if not file.is_dir():
             file_vars = _find_vars_in_file(file)
             all_vars = all_vars.union(file_vars)
     return all_vars
 
-def _list_of_files(path):
-    file_iterator = glob.glob(str(path / "**"), recursive=True, include_hidden=True)
-    return list(file_iterator)
-    
+def _list_of_files(dir):
+    """
+    Return list of all files in directory and subdirectories, 
+    excluding any files found in ".git" directories
+    """
+    filelist = []
+    for root, dirs, files in os.walk(dir):
+        filelist.extend([Path(root)/file for file in files])
+        if ".git" in dirs:
+            dirs.remove(".git")
+    return filelist
+
 def _unescape_content(string:str):
     return string.replace(r"\%", "%")
 
@@ -89,12 +97,12 @@ def _add_free_vars_to_args(args):
 def _git_check_out_commit(local_repo, commit):
     result = subprocess.run(['git', '-C', local_repo, 'checkout', commit, '--detach'], capture_output=True)            
     if result.returncode != 0:
-        raise TemplateError(f'Could not check out commit "{commit}".\nGit output:\n{result.stderr}')
+        raise TemplateError(f'Could not check out commit "{commit}".\nGit output:\n{result.stderr.decode()}')
 
 def _git_clone(repo, newdir):
     result = subprocess.run(['git', 'clone', repo, newdir], capture_output=True)
     if result.returncode != 0:
-        raise TemplateError(f'Could not clone git repo "{repo}".\nGit output:\n{result.stderr}')
+        raise TemplateError(f'Could not clone git repo "{repo}".\nGit output:\n{result.stderr.decode()}')
 
 def _get_current_commit_hash(local_repo):
     result = subprocess.run(['git', '-C', local_repo,  'rev-parse', '--short', 'HEAD'], capture_output=True)
@@ -111,7 +119,7 @@ def _has_local_changes(local_repo):
 def _get_git_origin(local_repo):
     result = subprocess.run(['git', '-C', local_repo, 'remote', 'get-url', 'origin'], capture_output=True)
     if result.returncode == 0 and result.stdout != b'':
-        return Path(result.stdout.decode()[0:-1])
+        return result.stdout.decode()[0:-1]
     return None
 
 def _git_hash_exists_on_origin(local_repo, hash):
@@ -121,7 +129,9 @@ def _git_hash_exists_on_origin(local_repo, hash):
         return False
     return True
 
-
+def _is_git_repo(local_repo):
+    result = subprocess.run(['git', '-C', local_repo, 'rev-parse'])
+    return result.returncode == 0
 
 """ END GIT WRAPPER FUNCTIONS """
 
@@ -131,8 +141,6 @@ def _clone_and_check_out(args, tempdir):
         _git_check_out_commit(tempdir, args.git_commit)
     else:
         args.git_commit = _get_current_commit_hash(tempdir)
-    #Remove git tracking from path
-    shutil.rmtree(Path(tempdir) / ".git", ignore_errors=True)
     if not args.git_folder:
         args.git_folder = "."
     return Path(tempdir) / args.git_folder
@@ -177,18 +185,15 @@ def _new_path_if_already_exists(output_path:Path, project_name:str):
         return output_path / project_name
     return output_path
 
-def _remote_if_it_has_current_commit(local_repo):
-    remote = _get_git_origin(local_repo)
-    if remote and _git_hash_exists_on_origin(local_repo, _get_current_commit_hash(local_repo)):
-        return remote
-    return local_repo
-
 def _check_is_local_source_git_repo(args):
     if args.template_path:
-        if (args.template_path / ".git").exists():
+        if _is_git_repo(args.template_path):
             if not _has_local_changes(args.template_path):
-                args.git_repo = _remote_if_it_has_current_commit(args.template_path)                
-                args.template_path = None
+                args.git_commit = _get_current_commit_hash(args.template_path)
+                args.git_repo = args.template_path
+                remote = _get_git_origin(args.template_path)
+                if remote and _git_hash_exists_on_origin(args.template_path, args.git_commit):
+                    args.git_repo = remote
             else:
                 print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")
 
@@ -215,14 +220,13 @@ def main(args):
     
     _check_arguments(args)        #Raises an exception if invalid arguments
 
-    _check_is_local_source_git_repo(args)
-
-    _check_is_git_repo_local(args)
-
-    
     if args.git_repo:
         tempdir = tempfile.TemporaryDirectory()    
         args.template_path = _clone_and_check_out(args, tempdir.name)
+    else:
+        _check_is_local_source_git_repo(args)
+
+    _check_is_git_repo_local(args)
 
     # Find all variables to be replaced in the template
     files = _list_of_files(args.template_path)
