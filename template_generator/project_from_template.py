@@ -302,7 +302,10 @@ def entry_point():
 
 
 if gooey_present:
-    @Gooey(required_cols=1, default_size=(500, 780), program_name="Create project from template")
+    @Gooey(required_cols=1, 
+           default_size=(500, 780),
+            program_name="Create project from template",
+            target="template-gui")    
     def entry_point_gui(): #Separate entry point for the GUI
         entry_point()
 else:
