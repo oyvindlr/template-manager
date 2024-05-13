@@ -29,9 +29,17 @@ def _paths_to_posix(value):
         value = value.absolute().as_posix()
     return value
 
-def _create_settings_file(project_path: Path, args):
+def _project_settings(args):
     d = vars(args)
     d = {key: str(_paths_to_posix(val)) for key, val in d.items()}
+    d["template"] = d["git_repo"] if "git_repo" in d and d["git_repo"] else d["template_path"]
+    d.pop("git_repo", None)
+    d.pop("template_path", None)
+    d.pop("tempdir", None)
+    return d
+
+def _create_settings_file(project_path: Path, args):
+    d = _project_settings(args)
     with open(project_path / _SETTINGS_FILE_NAME, 'x') as f:
         toml.dump(d, f)
 
@@ -181,30 +189,28 @@ def _replace_file_contents(file, vars):
         Path(file).write_text(newcontent)
 
 def _new_path_if_already_exists(output_path:Path, project_name:str):
-    if output_path.exists():
+    if output_path == None:
+        return Path(project_name)
+    elif output_path.exists():
         return output_path / project_name
     return output_path
 
 def _check_is_local_source_git_repo(args):
-    if args.template_path:
-        if _is_git_repo(args.template_path):
-            if not _has_local_changes(args.template_path):
-                args.git_commit = _get_current_commit_hash(args.template_path)
-                args.git_repo = args.template_path
-                remote = _get_git_origin(args.template_path)
-                if remote and _git_hash_exists_on_origin(args.template_path, args.git_commit):
-                    args.git_repo = remote
-            else:
-                print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")
+    if _is_git_repo(args.template_path):
+        if not _has_local_changes(args.template_path):
+            args.git_commit = _get_current_commit_hash(args.template_path)
+            args.git_repo = args.template_path
+            remote = _get_git_origin(args.template_path)
+            if remote and _git_hash_exists_on_origin(args.template_path, args.git_commit):
+                args.git_repo = remote
+        else:
+            print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")
 
-def _check_is_git_repo_local(args):
-    if args.git_repo and Path(args.git_repo).exists():
-        args.git_repo = Path(args.git_repo)
 
 def _get_arguments_from_toml(tomlfilepath, args):
     tomlargs = toml.load(tomlfilepath)
     if "git_repo" in tomlargs and tomlargs["git_repo"] != 'None':
-        tomlargs["template_path"] = None
+        tomlargs["template"] = "git_repo"
     for key, val in tomlargs.items():
         if not hasattr(args, key) or not getattr(args, key):
             if val == 'None':
@@ -214,19 +220,27 @@ def _get_arguments_from_toml(tomlfilepath, args):
             setattr(args, key, val)
     return args
 
+def _find_template_source(args):
+    if args.template.endswith(".git"):
+        args.git_repo = args.template
+        tempdir = tempfile.TemporaryDirectory()    
+        args.template_path = _clone_and_check_out(args, tempdir.name)
+        args.tempdir = tempdir #Bit of a hack; tempdir may be deleted when out of context, so keep it by adding it to the args structure
+    elif Path(args.template).exists():
+        args.template_path = Path(args.template)
+        _check_is_local_source_git_repo(args)
+    else:
+        raise TemplateError(f"Provided template source {args.template} is not a git repository or local directory")
+        
+
+
 def main(args):
     if args.settings_toml:
         args = _get_arguments_from_toml(args.settings_toml, args)
     
     _check_arguments(args)        #Raises an exception if invalid arguments
 
-    if args.git_repo:
-        tempdir = tempfile.TemporaryDirectory()    
-        args.template_path = _clone_and_check_out(args, tempdir.name)
-    else:
-        _check_is_local_source_git_repo(args)
-
-    _check_is_git_repo_local(args)
+    _find_template_source(args)
 
     # Find all variables to be replaced in the template
     files = _list_of_files(args.template_path)
@@ -246,6 +260,7 @@ def main(args):
         if not Path(file).is_dir():
             _replace_file_contents(file, args)
 
+
     _create_settings_file(args.output_path, args)
 
 def _parse_command_line_arguments(argv):
@@ -262,20 +277,18 @@ def _parse_command_line_arguments(argv):
         ap = argparse.ArgumentParser(prog=program_name,description=description)    
         
     if not "--settings-toml" in argv:
-        ap.add_argument("project",  help="Name of the new project")    
-        ap.add_argument("output_path", type=Path, help="Path to new project to be created", **dirchooser)
-    else:
-        ap.add_argument("--project",  help="Name of the new project")    
-        ap.add_argument("--output-path", type=Path, help="Path to new project to be created", **dirchooser)
-    ap.add_argument("--template-path",  type=Path, help="Path to folder containing template to create project from", **dirchooser)
-    ap.add_argument("--description", help="Description of the project")
+        ap.add_argument("project",  help="Name of the new project")
+        ap.add_argument("template", help="Location of the template, either a directory or a git repository", **dirchooser) 
+    ap.add_argument("-o", "--output-path", type=Path, help="Path to new project to be created. Default is ./<project name>", **dirchooser)
+    ap.add_argument("-d","--description", help="Description of the project")
     ap.add_argument("--author", help = "Name of the author of the project")
     ap.add_argument("--email", help = "E-mail of the author of the project")
     ap.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
-    ap.add_argument("--git-repo", help = "Git repository link to template (either git://<repo_url>.git, http://<repo_url>.git or <path_to_local_repo>)")
     ap.add_argument("--git-commit", help="Commit hash if not creating from the head of the default git branch")
-    ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'")
-    ap.add_argument("--settings-toml", type=Path, help = "Path to .template-settings.toml file to use as settings for the project", **filechooser)
+    ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'")   
+    if not gooey_present:
+        ap.add_argument("-t","--settings-toml", type=Path, help = "Path to .template-settings.toml file to use as settings for the project", **filechooser)
+
 
     args = ap.parse_args(argv)
 
@@ -285,10 +298,7 @@ def _check_arguments(args):
     """
     Raises an exception if invalid arguments
     """
-    if not (bool(args.template_path) != bool(args.git_repo)):
-        raise TemplateError("Either template path or git repo must be provided, but not both")
-    if args.template_path and not args.template_path.exists():
-        raise TemplateError(f"Template folder '{args.template_path}' not found")    
+    pass  
 
 def entry_point():
     args = _parse_command_line_arguments(sys.argv[1:])
@@ -303,9 +313,9 @@ def entry_point():
 
 if gooey_present:
     @Gooey(required_cols=1, 
-           default_size=(500, 780),
+           default_size=(500, 720),
             program_name="Create project from template",
-            target="template-gui")    
+            target="template-gui")
     def entry_point_gui(): #Separate entry point for the GUI
         entry_point()
 else:
