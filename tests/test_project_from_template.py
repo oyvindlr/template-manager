@@ -30,20 +30,19 @@ def another_template_path(tmp_path_factory):
     oldpath = Path("./tests/data/another_template")
     newpath = tmp_path_factory.mktemp("templatecopy")
     shutil.copytree(oldpath, newpath, dirs_exist_ok=True) 
-    return newpath
+    return str(newpath)
 
 
 @pytest.fixture
 def defaultargs(tmp_path):
     args = argparse.Namespace()
-    args.template_path = None
+    args.template = None
     args.output_path = tmp_path
     args.project = "MyTestProject"
     args.description = "A description"
     args.author = "Me A. Person"
     args.email = "me@person.edu"
     args.variables = ["HEI:HO", "HAI:HOI"]
-    args.git_repo = None
     args.git_commit = None
     args.git_folder = None
     args.settings_toml = None
@@ -147,7 +146,6 @@ def test_clone_repo(tmp_path, git_test_repo_path):
     #args.git_commit = "4d94fac5"
     args.git_commit = None
     args.git_folder = None
-    args.template_path = None
 
     template_path = project_from_template._clone_and_check_out(args, tmp_path)
 
@@ -158,7 +156,6 @@ def test_clone_repo_specific_commit(tmp_path, git_test_repo_path):
     args.git_repo = git_test_repo_path
     args.git_commit = "ae481533"
     args.git_folder = None
-    args.template_path = None
 
     template_path = project_from_template._clone_and_check_out(args, tmp_path)
 
@@ -170,7 +167,6 @@ def test_exception_when_no_repo(tmp_path):
     args.git_repo = Path("no/repo/here")
     args.git_commit = None
     args.git_folder = None
-    args.template_path = None
 
     with pytest.raises(project_from_template.TemplateError, match=".*clone git repo.*"):    
         project_from_template._clone_and_check_out(args, tmp_path)
@@ -180,7 +176,6 @@ def test_exception_when_wrong_commit_hash(tmp_path, git_test_repo_path):
     args.git_repo = git_test_repo_path
     args.git_commit = "52655646"
     args.git_folder = None
-    args.template_path = None
 
     with pytest.raises(project_from_template.TemplateError, match=".*check out commit.*"):    
         project_from_template._clone_and_check_out(args, tmp_path)
@@ -192,7 +187,7 @@ functionality is changed
 
 def test_new_project_contains_toml_file(tmp_path, defaultargs, another_template_path):
     
-    defaultargs.template_path = another_template_path
+    defaultargs.template = str(another_template_path)
 
     project_from_template.main(defaultargs)
 
@@ -209,13 +204,12 @@ def test_new_project_contains_toml_file(tmp_path, defaultargs, another_template_
     assert tomlfile["HEI"] == "HO"
     assert tomlfile["HAI"] == "HOI"
     assert not "variables" in tomlfile
-    assert tomlfile["template_path"] == defaultargs.template_path.absolute().as_posix()
+    assert tomlfile["template"] == defaultargs.template_path.absolute().as_posix()
 
 
 def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_path):
     
-    defaultargs.template_path = None
-    defaultargs.git_repo = git_test_repo_path
+    defaultargs.template = git_test_repo_path
 
     project_from_template.main(defaultargs)
 
@@ -231,22 +225,8 @@ def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_
     assert tomlfile["email"] == defaultargs.email
     assert tomlfile["HEI"] == "HO"
     assert tomlfile["HAI"] == "HOI"
-    assert tomlfile["git_repo"] == str(Path(defaultargs.git_repo).absolute().as_posix()) #Should recognize that this is a local relative path and convert it to absolute
+    assert tomlfile["template"] == str(Path(defaultargs.template).absolute().as_posix()) #Should recognize that this is a local relative path and convert it to absolute
     assert tomlfile["git_commit"] == "2d59c9c"
-
-
-def test_exception_when_having_both_git_repo_and_source_dir(defaultargs):
-    defaultargs.git_repo = "git://google.com/myrepo.git"
-    defaultargs.template_path = "tests/data/another_template"
-
-    with pytest.raises(project_from_template.TemplateError, match="^.*[Ee]ither.*repo.*$"):
-        project_from_template.main(defaultargs)
-
-def test_exception_when_missing_both_git_repo_and_source_dir(defaultargs):
-    defaultargs.template_path = None
-
-    with pytest.raises(project_from_template.TemplateError, match="^.*[Ee]ither.*repo.*$"):
-        project_from_template.main(defaultargs)
 
 
 def test_project_settings_in_toml_file(tmp_path, git_test_repo_direct_path):
@@ -259,33 +239,30 @@ def test_project_settings_in_toml_file(tmp_path, git_test_repo_direct_path):
 
 
 def test_finds_commit_if_local_source_is_repo(defaultargs, tmp_path, git_test_repo_path):
-    defaultargs.template_path = Path(git_test_repo_path)
+    defaultargs.template = git_test_repo_path
 
     project_from_template.main(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
-    assert tomlfile["git_repo"] == str(Path(git_test_repo_path).absolute().as_posix())
+    assert tomlfile["template"] == str(Path(git_test_repo_path).absolute().as_posix())
     assert tomlfile["git_commit"] == "2d59c9c"
 
 @pytest.mark.skipif(not sys.platform.startswith("win"), reason="Depends on remote repo.")
 def test_remote_repo(defaultargs, tmp_path):
-    defaultargs.template_path = None
-    #defaultargs.git_repo = "git@devtools:info-group/gitlab-wiki.git"
-    defaultargs.git_repo = "http://devtools/info-group/gitlab-wiki.git"
+    defaultargs.template = "http://devtools/info-group/gitlab-wiki.git"
 
     project_from_template.main(defaultargs)
 
 def test_ignores_that_local_source_is_repo_and_emits_warning_if_files_changed(defaultargs, git_test_repo_path, tmp_path, capsys):    
-    defaultargs.template_path = Path(git_test_repo_path)
+    defaultargs.template = git_test_repo_path
     #create new file so repo is not pristine
-    (defaultargs.template_path / "newfile.txt").touch()
+    (Path(git_test_repo_path) / "newfile.txt").touch()
 
     project_from_template.main(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
-    assert tomlfile["template_path"] == defaultargs.template_path.absolute().as_posix()
-    assert tomlfile["git_repo"] == 'None'
+    assert tomlfile["template"] == Path(git_test_repo_path).absolute().as_posix()
     assert capsys.readouterr().out.startswith("Warning: ")
 
 
@@ -295,14 +272,13 @@ def test_use_origin_if_exists_and_has_commit(defaultargs, tmp_path, tmp_path_fac
     subprocess.run(['git', 'clone', git_test_repo_path, newpath])
     #Origin of repo in newpath should be in git_test_repo_path
 
-    defaultargs.template_path = newpath
+    defaultargs.template = str(newpath)
 
     project_from_template.main(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
-    assert tomlfile["git_repo"] == Path(git_test_repo_path).as_posix()
-
+    assert tomlfile["template"] == git_test_repo_path
 
 def test_dont_use_origin_if_doesnt_have_commit(defaultargs, tmp_path, tmp_path_factory, git_test_repo_path):
     newpath = tmp_path_factory.mktemp("local")
@@ -314,16 +290,16 @@ def test_dont_use_origin_if_doesnt_have_commit(defaultargs, tmp_path, tmp_path_f
     subprocess.run(['git', '-C', newpath, 'add', 'myfile.txt'])
     subprocess.run(['git', '-C', newpath, 'commit', '-m', 'Hei'])
 
-    defaultargs.template_path = newpath
+    defaultargs.template = str(newpath)
 
     project_from_template.main(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
-    assert tomlfile["git_repo"] == Path(newpath).as_posix()
+    assert tomlfile["template"] == Path(newpath).as_posix()
 
 def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test_repo_path):
-    defaultargs.template_path = Path(git_test_repo_path)
+    defaultargs.template = git_test_repo_path
 
     project_from_template.main(defaultargs)
 
@@ -335,13 +311,10 @@ def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test
                   current repo is in sync with origin, and assumes that origin\
                   is devtools/python/template_generator")
 def test_remote_url_is_correct_when_read_from_local_repo(defaultargs, tmp_path):
-    defaultargs.template_path = Path("tests/data/another_template")
+    defaultargs.templateh = Path("tests/data/another_template")
 
     project_from_template.main(defaultargs)
 
     tomlfile = get_toml(tmp_path, defaultargs)
 
     assert tomlfile["git_repo"] == "http://devtools/python/template-generator.git"
-
-
-    
