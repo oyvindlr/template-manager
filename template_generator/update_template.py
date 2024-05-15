@@ -55,7 +55,12 @@ def main(argv):
     args = _parse_arguments(argv)
 
     settings_toml = args.directory / ".template_settings.toml"
-    temp_dir = tempfile.TemporaryDirectory()    
+    if not settings_toml.exists():
+        print('Error: The project to update must contain a ".template_settings.toml" file')
+        sys.exit(1)
+
+    temp_dir = tempfile.TemporaryDirectory()
+
 
     print("Recreating original empty project from template...")
     project_creation_args = ["--settings-toml", str(settings_toml), "--output-path", temp_dir.name]
