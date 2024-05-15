@@ -2,6 +2,7 @@ import pytest
 import argparse
 from template_generator import project_from_template
 from template_generator.project_from_template import TemplateError
+from template_generator.git_wrapper import GitError
 from pathlib import Path
 import toml
 import os
@@ -49,8 +50,8 @@ def defaultargs(tmp_path):
     return args
 
 
-def get_toml(tmp_path, defaultargs):
-    return toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
+def get_toml(toml_path):
+    return toml.load(toml_path / ".template_settings.toml")
 
 """
 These are tests of private functions, and not the API.
@@ -59,7 +60,7 @@ so, it is OK to delete the breaking tests.
 """
 
 def test_git_folder_does_not_exist():
-    assert not Path("tests/data/git_template/.git").exists(), "If this test fails, something is wrong with the repository, not the code. The .git folder should not exist within tests/data/git_template."
+    assert not Path("tests/data/git_template/.git").exists(), "If this test fails, something is wrong with the repository, not the code. The .git folder should not exist within tests/data/git_template. Please rename it to \"gitdir\""
 
 def test_find_patterns_in_file_names():
     files = ["hei", "ja%var1%", "h%var2%q%var3%", "ja", "hei%var2%"]
@@ -168,7 +169,7 @@ def test_exception_when_no_repo(tmp_path):
     args.git_commit = None
     args.git_folder = None
 
-    with pytest.raises(project_from_template.TemplateError, match=".*clone git repo.*"):    
+    with pytest.raises(GitError, match=".*clone git repo.*"):    
         project_from_template._clone_and_check_out(args, tmp_path)
 
 def test_exception_when_wrong_commit_hash(tmp_path, git_test_repo_path):
@@ -177,7 +178,7 @@ def test_exception_when_wrong_commit_hash(tmp_path, git_test_repo_path):
     args.git_commit = "52655646"
     args.git_folder = None
 
-    with pytest.raises(project_from_template.TemplateError, match=".*check out commit.*"):    
+    with pytest.raises(GitError, match=".*check out commit.*"):    
         project_from_template._clone_and_check_out(args, tmp_path)
 
 """
@@ -189,7 +190,7 @@ def test_new_project_contains_toml_file(tmp_path, defaultargs, another_template_
     
     defaultargs.template = str(another_template_path)
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
     assert (tmp_path / defaultargs.project).exists()
     
@@ -204,14 +205,14 @@ def test_new_project_contains_toml_file(tmp_path, defaultargs, another_template_
     assert tomlfile["HEI"] == "HO"
     assert tomlfile["HAI"] == "HOI"
     assert not "variables" in tomlfile
-    assert tomlfile["template"] == defaultargs.template_path.absolute().as_posix()
+    assert tomlfile["template"] == defaultargs.template
 
 
 def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_path):
     
     defaultargs.template = git_test_repo_path
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
     assert (tmp_path / defaultargs.project).exists()
     
@@ -225,8 +226,8 @@ def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_
     assert tomlfile["email"] == defaultargs.email
     assert tomlfile["HEI"] == "HO"
     assert tomlfile["HAI"] == "HOI"
-    assert tomlfile["template"] == str(Path(defaultargs.template).absolute().as_posix()) #Should recognize that this is a local relative path and convert it to absolute
-    assert tomlfile["git_commit"] == "2d59c9c"
+    assert tomlfile["template"] == defaultargs.template
+    assert tomlfile["git_commit"] == "078b406"
 
 
 def test_project_settings_in_toml_file(tmp_path, git_test_repo_direct_path):
@@ -235,34 +236,41 @@ def test_project_settings_in_toml_file(tmp_path, git_test_repo_direct_path):
     args.variables = None
     args.output_path = tmp_path
     
-    project_from_template.main(args)
+    out_path = project_from_template._build(args)
+
+    tomlfile = get_toml(out_path)
+
+    assert tomlfile["template"] == "tests/data/git_template"
+
+
+
 
 
 def test_finds_commit_if_local_source_is_repo(defaultargs, tmp_path, git_test_repo_path):
     defaultargs.template = git_test_repo_path
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
-    assert tomlfile["template"] == str(Path(git_test_repo_path).absolute().as_posix())
-    assert tomlfile["git_commit"] == "2d59c9c"
+    assert tomlfile["template"] == git_test_repo_path
+    assert tomlfile["git_commit"] == "078b406"
 
 @pytest.mark.skipif(not sys.platform.startswith("win"), reason="Depends on remote repo.")
 def test_remote_repo(defaultargs, tmp_path):
     defaultargs.template = "http://devtools/info-group/gitlab-wiki.git"
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
 def test_ignores_that_local_source_is_repo_and_emits_warning_if_files_changed(defaultargs, git_test_repo_path, tmp_path, capsys):    
     defaultargs.template = git_test_repo_path
     #create new file so repo is not pristine
     (Path(git_test_repo_path) / "newfile.txt").touch()
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
-    assert tomlfile["template"] == Path(git_test_repo_path).absolute().as_posix()
+    assert tomlfile["template"] == git_test_repo_path
     assert capsys.readouterr().out.startswith("Warning: ")
 
 
@@ -274,7 +282,7 @@ def test_use_origin_if_exists_and_has_commit(defaultargs, tmp_path, tmp_path_fac
 
     defaultargs.template = str(newpath)
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
@@ -292,16 +300,16 @@ def test_dont_use_origin_if_doesnt_have_commit(defaultargs, tmp_path, tmp_path_f
 
     defaultargs.template = str(newpath)
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
-    assert tomlfile["template"] == Path(newpath).as_posix()
+    assert tomlfile["template"] == defaultargs.template
 
 def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test_repo_path):
     defaultargs.template = git_test_repo_path
 
-    project_from_template.main(defaultargs)
+    project_from_template._build(defaultargs)
 
     assert not (tmp_path / defaultargs.project / ".git").exists()
     
@@ -313,8 +321,8 @@ def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test
 def test_remote_url_is_correct_when_read_from_local_repo(defaultargs, tmp_path):
     defaultargs.templateh = Path("tests/data/another_template")
 
-    project_from_template.main(defaultargs)
+    project_path = project_from_template._build(defaultargs)
 
-    tomlfile = get_toml(tmp_path, defaultargs)
+    tomlfile = get_toml(project_path)
 
     assert tomlfile["git_repo"] == "http://devtools/python/template-generator.git"

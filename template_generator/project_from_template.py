@@ -9,12 +9,16 @@ import toml
 import tempfile
 import shutil
 import subprocess
+import template_generator.git_wrapper as git
+import template_generator
 from pathlib import Path
 try:
     from gooey import Gooey, GooeyParser #Create GUI from cmd-line app
     gooey_present = True
 except:
     gooey_present = False
+
+running_in_gui = False
 
 class TemplateError(Exception):
     pass
@@ -24,18 +28,16 @@ _FILENAME_PATTERN = re.compile(r"(?<!\^)%[^%]*(?<!\^)%")
 
 _SETTINGS_FILE_NAME = ".template_settings.toml"
 
-def _paths_to_posix(value):
-    if isinstance(value, Path):
-        value = value.absolute().as_posix()
-    return value
-
 def _project_settings(args):
     d = vars(args)
-    d = {key: str(_paths_to_posix(val)) for key, val in d.items()}
+    #d = {key: str(_paths_to_posix(val)) for key, val in d.items()}
+    d = {key: str(val) for key, val in d.items()}
     d["template"] = d["git_repo"] if "git_repo" in d and d["git_repo"] else d["template_path"]
     d.pop("git_repo", None)
     d.pop("template_path", None)
     d.pop("tempdir", None)
+    d.pop("output_path", None)
+    d.pop("settings_toml", None)
     return d
 
 def _create_settings_file(project_path: Path, args):
@@ -101,54 +103,13 @@ def _add_free_vars_to_args(args):
             setattr(args, namevalue[0], namevalue[1])
 
 
-""" GIT WRAPPER FUNCTIONS """
-def _git_check_out_commit(local_repo, commit):
-    result = subprocess.run(['git', '-C', local_repo, 'checkout', commit, '--detach'], capture_output=True)            
-    if result.returncode != 0:
-        raise TemplateError(f'Could not check out commit "{commit}".\nGit output:\n{result.stderr.decode()}')
-
-def _git_clone(repo, newdir):
-    result = subprocess.run(['git', 'clone', repo, newdir], capture_output=True)
-    if result.returncode != 0:
-        raise TemplateError(f'Could not clone git repo "{repo}".\nGit output:\n{result.stderr.decode()}')
-
-def _get_current_commit_hash(local_repo):
-    result = subprocess.run(['git', '-C', local_repo,  'rev-parse', '--short', 'HEAD'], capture_output=True)
-    if result.returncode == 0:
-        return result.stdout.decode()[0:7]
-    return ''
-
-def _has_local_changes(local_repo):
-    result = subprocess.run(['git', '-C', local_repo, 'status', '--porcelain'], capture_output=True)
-    if result.returncode == 0 and result.stdout == b'':
-        return False
-    return True
-
-def _get_git_origin(local_repo):
-    result = subprocess.run(['git', '-C', local_repo, 'remote', 'get-url', 'origin'], capture_output=True)
-    if result.returncode == 0 and result.stdout != b'':
-        return result.stdout.decode()[0:-1]
-    return None
-
-def _git_hash_exists_on_origin(local_repo, hash):
-    subprocess.run(['git', '-C', local_repo, 'fetch'])
-    result = subprocess.run(['git', '-C', local_repo, 'branch', '-r', '--contains', hash], capture_output=True)
-    if result.returncode != 0 or result.stdout == b'':
-        return False
-    return True
-
-def _is_git_repo(local_repo):
-    result = subprocess.run(['git', '-C', local_repo, 'rev-parse'])
-    return result.returncode == 0
-
-""" END GIT WRAPPER FUNCTIONS """
 
 def _clone_and_check_out(args, tempdir):    
-    _git_clone(args.git_repo, tempdir)                                    
+    git.clone(args.git_repo, tempdir)                                    
     if args.git_commit:        
-        _git_check_out_commit(tempdir, args.git_commit)
+        git.check_out_commit(tempdir, args.git_commit)
     else:
-        args.git_commit = _get_current_commit_hash(tempdir)
+        args.git_commit = git.get_current_commit_hash(tempdir)
     if not args.git_folder:
         args.git_folder = "."
     return Path(tempdir) / args.git_folder
@@ -196,12 +157,12 @@ def _new_path_if_already_exists(output_path:Path, project_name:str):
     return output_path
 
 def _check_is_local_source_git_repo(args):
-    if _is_git_repo(args.template_path):
-        if not _has_local_changes(args.template_path):
-            args.git_commit = _get_current_commit_hash(args.template_path)
-            args.git_repo = args.template_path
-            remote = _get_git_origin(args.template_path)
-            if remote and _git_hash_exists_on_origin(args.template_path, args.git_commit):
+    if git.dir_contains_repo(args.template):
+        if not git.has_local_changes(args.template):
+            args.git_commit = git.get_current_commit_hash(args.template)
+            args.git_repo = args.template
+            remote = git.get_origin(args.template)
+            if remote and git.hash_exists_on_origin(args.template, args.git_commit):
                 args.git_repo = remote
         else:
             print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")
@@ -212,16 +173,13 @@ def _get_arguments_from_toml(tomlfilepath, args):
     if "git_repo" in tomlargs and tomlargs["git_repo"] != 'None':
         tomlargs["template"] = "git_repo"
     for key, val in tomlargs.items():
-        if not hasattr(args, key) or not getattr(args, key):
-            if val == 'None':
-                val = None
-            if key.endswith("path") and val:
-                val = Path(val)
-            setattr(args, key, val)
+        if val == 'None':
+            val = None
+        setattr(args, key, val)
     return args
 
 def _find_template_source(args):
-    if args.template.endswith(".git"):
+    if args.template.endswith(".git") or args.git_commit: #If local folder, but git commit given, also treat as repo
         args.git_repo = args.template
         tempdir = tempfile.TemporaryDirectory()    
         args.template_path = _clone_and_check_out(args, tempdir.name)
@@ -234,7 +192,7 @@ def _find_template_source(args):
         
 
 
-def main(args):
+def _build(args):
     if args.settings_toml:
         args = _get_arguments_from_toml(args.settings_toml, args)
     
@@ -263,6 +221,8 @@ def main(args):
 
     _create_settings_file(args.output_path, args)
 
+    return args.output_path
+
 def _parse_command_line_arguments(argv):
     program_name = "Create project from template"
     description = "Use this program to generate a new project from a template."
@@ -285,12 +245,15 @@ def _parse_command_line_arguments(argv):
     ap.add_argument("--email", help = "E-mail of the author of the project")
     ap.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
     ap.add_argument("--git-commit", help="Commit hash if not creating from the head of the default git branch")
-    ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'")   
-    if not gooey_present:
+    ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'")       
+    if not running_in_gui:
         ap.add_argument("-t","--settings-toml", type=Path, help = "Path to .template-settings.toml file to use as settings for the project", **filechooser)
 
-
     args = ap.parse_args(argv)
+
+    #Version argument only relevant when recreating project using toml file. May be used for forward compatibility, to generate templates and toml files as they would be
+    #generated using that specific version of this program
+    args.version = template_generator.__version__ 
 
     return args
 
@@ -298,17 +261,22 @@ def _check_arguments(args):
     """
     Raises an exception if invalid arguments
     """
-    pass  
+    pass
 
-def entry_point():
-    args = _parse_command_line_arguments(sys.argv[1:])
+def main(argv):
+    args = _parse_command_line_arguments(argv)
     try:
-        main(args)
+        output_path = _build(args)
     except TemplateError as e:
         print(e)
         sys.exit(1)
 
     print(f"New project created successfully in directory {args.output_path}")
+    return output_path
+
+def entry_point():
+    _build(sys.argv[1:])
+
 
 
 if gooey_present:
@@ -317,6 +285,8 @@ if gooey_present:
             program_name="Create project from template",
             target="template-gui")
     def entry_point_gui(): #Separate entry point for the GUI
+        global running_in_gui
+        running_in_gui = True
         entry_point()
 else:
     def entry_point_gui():
