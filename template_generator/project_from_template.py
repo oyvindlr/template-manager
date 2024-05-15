@@ -275,7 +275,7 @@ def main(argv):
     return output_path
 
 def entry_point():
-    _build(sys.argv[1:])
+    main(sys.argv[1:])
 
 
 
