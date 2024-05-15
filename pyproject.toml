@@ -14,7 +14,7 @@ readme = "README.md"
 [project.scripts]
 template-gen = "template_generator.project_from_template:entry_point"
 template-gui = "template_generator.project_from_template:entry_point_gui"
-update-template = "template_generator.update_template.entry_point"
+update-template = "template_generator.update_template:entry_point"
 
 [tool.setuptools.dynamic]
 version = {file = "template_generator/VERSION"}
