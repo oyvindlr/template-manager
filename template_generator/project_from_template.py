@@ -193,7 +193,7 @@ def _find_template_source(args):
 
 
 def _build(args):
-    if args.settings_toml:
+    if hasattr(args, "settings_toml") and args.settings_toml:
         args = _get_arguments_from_toml(args.settings_toml, args)
     
     _check_arguments(args)        #Raises an exception if invalid arguments
