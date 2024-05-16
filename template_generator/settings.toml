@@ -1,0 +1,10 @@
+# Settings for the template generator
+
+default_template_repo = "http://devtools/general/templates.git"
+
+#Uncomment and add your settings below:
+#author = "Author Name"
+#email = "email@example.com"
+
+
+

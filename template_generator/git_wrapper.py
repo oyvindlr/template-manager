@@ -10,8 +10,10 @@ def check_out_commit(local_repo, commit):
     if result.returncode != 0:
         raise GitError(f'Could not check out commit "{commit}".\nGit output:\n{result.stderr.decode()}')
 
-def clone(repo, newdir):
-    result = subprocess.run(['git', 'clone', repo, newdir], capture_output=True)
+def clone(repo, newdir, *args):
+    clone_args = ['git', 'clone', repo, newdir]
+    clone_args.extend(args)
+    result = subprocess.run(clone_args, capture_output=True)
     if result.returncode != 0:
         raise GitError(f'Could not clone git repo "{repo}".\nGit output:\n{result.stderr.decode()}')
 
