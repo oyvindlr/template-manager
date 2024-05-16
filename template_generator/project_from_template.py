@@ -8,9 +8,9 @@ import argparse
 import toml
 import tempfile
 import shutil
-import subprocess
-import template_generator.git_wrapper as git
-import template_generator
+from . import git_wrapper as git
+
+from importlib.metadata import version
 from pathlib import Path
 try:
     from gooey import Gooey, GooeyParser #Create GUI from cmd-line app
@@ -26,7 +26,11 @@ class TemplateError(Exception):
 _CONTENT_PATTERN = re.compile(r"(?<!\\)%[^%]*(?<!\\)%")
 _FILENAME_PATTERN = re.compile(r"(?<!\^)%[^%]*(?<!\^)%")
 
-_SETTINGS_FILE_NAME = ".template_settings.toml"
+_PROJECT_SETTINGS_FILE_NAME = ".template_settings.toml"
+
+_GENERAL_SETTINGS_FILE = Path(__file__).parent / "settings.toml"
+
+
 
 def _project_settings(args):
     d = vars(args)
@@ -42,9 +46,16 @@ def _project_settings(args):
 
 def _create_settings_file(project_path: Path, args):
     d = _project_settings(args)
-    with open(project_path / _SETTINGS_FILE_NAME, 'x') as f:
+    with open(project_path / _PROJECT_SETTINGS_FILE_NAME, 'x') as f:
         toml.dump(d, f)
 
+def _read_settings():    
+    d =  {"default_template_repo":None, "email":None, "author":None}
+    try:
+        d.update(toml.load(_GENERAL_SETTINGS_FILE))
+    except:
+        pass
+    return d
 
 def _find_vars_in_file_names(filelist:list[Path]) -> set:
     vars_ = []
@@ -189,7 +200,35 @@ def _find_template_source(args):
         _check_is_local_source_git_repo(args)
     else:
         raise TemplateError(f"Provided template source {args.template} is not a git repository or local directory")
-        
+    
+def _folder_list(template_repo):
+    temp_dir = tempfile.TemporaryDirectory()
+    git.clone(template_repo, temp_dir.name, "--depth", "1")
+    items = os.listdir(temp_dir.name)
+    flist = []
+    for item in items:
+        if item != ".git":
+            if (Path(temp_dir.name) / item) .is_dir():
+                flist.append(item)
+    return flist
+
+def _folder_list_from_argv(argv, defaults):
+    template = None
+    if "default_template_repo" in defaults:
+        template = defaults["default_template_repo"]
+    if "--template" in argv:
+        template = argv[argv.index("--template") + 1]
+    if template:
+        return _folder_list(template)
+    return []
+
+def _list_folders(args):
+    if not args.template:
+        print("No template repository provided. Use --template or define a default repository using --edit-settings")
+        return
+    folders = _folder_list(args.template)
+    for folder in folders:
+        print(folder)
 
 
 def _build(args):
@@ -223,37 +262,49 @@ def _build(args):
 
     return args.output_path
 
-def _parse_command_line_arguments(argv):
+def _parse_command_line_arguments(argv, defaults):
     program_name = "Create project from template"
     description = "Use this program to generate a new project from a template."
     dirchooser = {}
     filechooser = {}
-    if gooey_present:
+    folder_choices = {}
+    if running_in_gui:
         #GooeyParser extends argparse.ArgumentParser. You can still use this as a command line parser, but it takes the additional "widget" argument for use in the GUI
         ap = GooeyParser(prog=program_name,description=description)
         dirchooser = {'widget':'DirChooser'}
         filechooser = {'widget' : 'FileChooser'}
+        folder_choices = {'choices': [".", *_folder_list_from_argv(argv, defaults)] }
     else:
         ap = argparse.ArgumentParser(prog=program_name,description=description)    
         
-    if not "--settings-toml" in argv:
+    if not "--settings-toml" in argv and not "-t" in argv and not "--edit-settings" in argv and not "--list-folders" in argv: 
         ap.add_argument("project",  help="Name of the new project")
-        ap.add_argument("template", help="Location of the template, either a directory or a git repository", **dirchooser) 
+    ap.add_argument("--template", help="Location of the template, either a directory or a git repository", default= defaults["default_template_repo"],**dirchooser) 
     ap.add_argument("-o", "--output-path", type=Path, help="Path to new project to be created. Default is ./<project name>", **dirchooser)
     ap.add_argument("-d","--description", help="Description of the project")
-    ap.add_argument("--author", help = "Name of the author of the project")
-    ap.add_argument("--email", help = "E-mail of the author of the project")
+    ap.add_argument("--author", help = "Name of the author of the project", default = defaults["author"])
+    ap.add_argument("--email", help = "E-mail of the author of the project", default = defaults["email"])
     ap.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
     ap.add_argument("--git-commit", help="Commit hash if not creating from the head of the default git branch")
-    ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'")       
-    if not running_in_gui:
+    ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'", **folder_choices)  
+    if not running_in_gui:        
         ap.add_argument("-t","--settings-toml", type=Path, help = "Path to .template-settings.toml file to use as settings for the project", **filechooser)
+        ap.add_argument("--edit-settings", help= "Edit settings such as default template repo and author details", action='store_true')
+        ap.add_argument("--list-folders", help="Output a list of folders in the root of the git repository", action='store_true')
 
     args = ap.parse_args(argv)
 
     #Version argument only relevant when recreating project using toml file. May be used for forward compatibility, to generate templates and toml files as they would be
     #generated using that specific version of this program
-    args.version = template_generator.__version__ 
+    try:
+        args.version = version("template_generator")
+    except:
+        try:
+            import template_generator
+            args.version = template_generator.__version__
+        except:
+            args.version = "0.0.0"
+
 
     return args
 
@@ -264,7 +315,14 @@ def _check_arguments(args):
     pass
 
 def main(argv):
-    args = _parse_command_line_arguments(argv)
+    defaults = _read_settings()
+    args = _parse_command_line_arguments(argv, defaults)
+    if args.edit_settings:
+        os.startfile(_GENERAL_SETTINGS_FILE)
+        sys.exit(0)
+    if args.list_folders:
+        _list_folders(args)
+        sys.exit(0)
     try:
         output_path = _build(args)
     except TemplateError as e:
@@ -280,7 +338,7 @@ def entry_point():
 
 
 if gooey_present:
-    @Gooey(required_cols=1, 
+    @Gooey( 
            default_size=(500, 720),
             program_name="Create project from template",
             target="template-gui")
@@ -294,5 +352,5 @@ else:
         sys.exit(1)
 
 if __name__ == "__main__":
-    entry_point()
+    entry_point_gui()
 

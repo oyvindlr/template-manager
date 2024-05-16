@@ -7,7 +7,7 @@
             "request": "launch",
             "program": "\"${file}\"",
             "console": "integratedTerminal",
-            "args": "my_new_project my_new_project --description \"Hallo hallo hvem er det\" --email oyvindlr@gmail.com --variables BAJS:KORV --author Meg --git-repo http://devtools/general/templates --git-folder python_project_simple_ci"
+            "args": "--list-folders"
         }
     ]
 }
