@@ -317,10 +317,10 @@ def _check_arguments(args):
 def main(argv):
     defaults = _read_settings()
     args = _parse_command_line_arguments(argv, defaults)
-    if args.edit_settings:
+    if hasattr(args, "edit_settings") and args.edit_settings:
         os.startfile(_GENERAL_SETTINGS_FILE)
         sys.exit(0)
-    if args.list_folders:
+    if hasattr(args, "list_folders") and args.list_folders:
         _list_folders(args)
         sys.exit(0)
     try:
