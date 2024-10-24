@@ -7,7 +7,7 @@ pythonpath = [
 name = "template-generator"
 description = "A small program to generate templates by replacing key names in files and file/folder names by specific values"
 authors= [{name = "Øyvind Rørtveit", email = "oyvind.rortveit@naxystech.com"}]
-dependencies =["gooey", "toml"]
+dependencies =["toml"]
 dynamic = ["version"]
 readme = "README.md"
 
