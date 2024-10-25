@@ -8,6 +8,7 @@ import argparse
 import toml
 import tempfile
 import shutil
+import datetime
 from . import git_wrapper as git
 
 from importlib.metadata import version
@@ -234,8 +235,10 @@ def _list_folders(args):
 def _build(args):
     if hasattr(args, "settings_toml") and args.settings_toml:
         args = _get_arguments_from_toml(args.settings_toml, args)
-    
+
     _check_arguments(args)        #Raises an exception if invalid arguments
+
+    _add_special_variables(args)
 
     _find_template_source(args)
 
@@ -307,6 +310,13 @@ def _parse_command_line_arguments(argv, defaults):
 
 
     return args
+
+def  _add_special_variables(args):
+    args.project = args.project.replace(" ", "-")
+    args.project_us = args.project.replace("-", "_")
+    args.project_lc = args.project.lower()
+    args.project_us_lc = args.project_us.lower()
+    args.date = datetime.datetime.now().date().isoformat()
 
 def _check_arguments(args): 
     """

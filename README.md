@@ -48,7 +48,7 @@ to start the GUI.
 
 ### Creating your own template
 To create your own template, create a new folder containing all files and folders that a new project made from the template should contain. The names of files and folders may contain keywords such as %project%, %author% etc. These will be replaced by the variable values in the newly created project. The contents of the file may also contain such keywords which will be replaced.
-You can use any keywords you wish. The keywords "project", "description", "author" and "email" are given by standard command line arguments. Any other keywords must be given through the "--variables" option of the command line tool, e.g 
+You can use any keywords you wish. The keywords "project", "description", "author" and "email" are given by standard command line arguments. Additional special keywords are "project_us" (project with dashes and spaces replaced by underscores), "project_lc" (project lowercase), "project_us_lc" (both) and "date" (current date).  Any other keywords must be given through the "--variables" option of the command line tool, e.g 
 
 ```template-gen --variables "my_var_1:Hello world" my_var_2:somethingelse ...```
 
