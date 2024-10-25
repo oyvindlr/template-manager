@@ -1,0 +1,4 @@
+%project%
+%project_us%
+%project_lc%
+%project_us_lc%

@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import subprocess
+import re
 
 @pytest.fixture
 def git_test_repo_path(tmp_path_factory):
@@ -312,6 +313,62 @@ def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test
     project_from_template._build(defaultargs)
 
     assert not (tmp_path / defaultargs.project / ".git").exists()
+    
+
+def test_spaces_converted_to_dashes_in_project_name(tmp_path, defaultargs):
+    defaultargs.template = "tests/data/project_sanitize_template"
+    defaultargs.project = "Project with spaces"
+
+    expected_project_name = "Project-with-spaces"
+  
+    project_from_template._build(defaultargs)
+
+    fullpath = (tmp_path / expected_project_name)/(expected_project_name + ".txt")
+
+    assert fullpath.exists()
+
+    assert fullpath.read_text() == expected_project_name
+
+
+def test_special_lowercase_and_underscore_project_name_variables_are_created_automatically(tmp_path, defaultargs):
+    defaultargs.template = "tests/data/project_sanitize_template"
+    defaultargs.project = "With-spaces and dashes"
+
+    expected_project_name = "With-spaces-and-dashes"
+  
+    project_from_template._build(defaultargs)
+
+    project_path = tmp_path / expected_project_name
+
+    assert project_path.exists()
+
+    file_content = (project_path / "test.txt").read_text()
+
+    lines = file_content.splitlines()
+
+
+    assert lines[0] == "With-spaces-and-dashes"
+    assert lines[1] == "With_spaces_and_dashes"
+    assert lines[2] == "with-spaces-and-dashes"
+    assert lines[3] == "with_spaces_and_dashes"
+
+
+def test_date(tmp_path, defaultargs):
+    defaultargs.template = "tests/data/project_sanitize_template"
+
+    project_from_template._build(defaultargs)
+
+    project_path = tmp_path / defaultargs.project
+
+    assert (project_path / "date.txt").exists()
+
+    date = (project_path / "date.txt").read_text()
+
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) is not None
+
+
+
+
     
 
 
