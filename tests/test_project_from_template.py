@@ -315,30 +315,30 @@ def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test
     assert not (tmp_path / defaultargs.project / ".git").exists()
     
 
-def test_spaces_converted_to_dashes_in_project_name(tmp_path, defaultargs):
+def test_spaces_converted_to_underscores_in_project_folder(tmp_path, defaultargs):
     defaultargs.template = "tests/data/project_sanitize_template"
     defaultargs.project = "Project with spaces"
 
-    expected_project_name = "Project-with-spaces"
+    expected_project_name = "Project_with_spaces"
   
     project_from_template._build(defaultargs)
 
-    fullpath = (tmp_path / expected_project_name)/(expected_project_name + ".txt")
+    fullpath = (tmp_path / expected_project_name)/(defaultargs.project + ".txt")
 
     assert fullpath.exists()
 
-    assert fullpath.read_text() == expected_project_name
+    assert fullpath.read_text() == defaultargs.project
 
 
 def test_special_lowercase_and_underscore_project_name_variables_are_created_automatically(tmp_path, defaultargs):
     defaultargs.template = "tests/data/project_sanitize_template"
     defaultargs.project = "With-spaces and dashes"
 
-    expected_project_name = "With-spaces-and-dashes"
+    expected_folder_name = "With-spaces_and_dashes"
   
     project_from_template._build(defaultargs)
 
-    project_path = tmp_path / expected_project_name
+    project_path = tmp_path / expected_folder_name
 
     assert project_path.exists()
 
@@ -347,7 +347,7 @@ def test_special_lowercase_and_underscore_project_name_variables_are_created_aut
     lines = file_content.splitlines()
 
 
-    assert lines[0] == "With-spaces-and-dashes"
+    assert lines[0] == "With-spaces and dashes"
     assert lines[1] == "With_spaces_and_dashes"
     assert lines[2] == "with-spaces-and-dashes"
     assert lines[3] == "with_spaces_and_dashes"

@@ -250,7 +250,7 @@ def _build(args):
     
     _exception_if_required_args_are_not_present(args, required_vars)    
 
-    args.output_path = _new_path_if_already_exists(args.output_path, args.project)
+    args.output_path = _new_path_if_already_exists(args.output_path, args.project_folder)
 
     _replace_filenames(files, args, args.output_path, args.template_path)
 
@@ -312,9 +312,9 @@ def _parse_command_line_arguments(argv, defaults):
     return args
 
 def  _add_special_variables(args):
-    args.project = args.project.replace(" ", "-")
-    args.project_us = args.project.replace("-", "_")
-    args.project_lc = args.project.lower()
+    args.project_folder = args.project.replace(" ", "_")
+    args.project_us = args.project_folder.replace("-", "_")
+    args.project_lc = args.project.replace(" ", "-").lower()
     args.project_us_lc = args.project_us.lower()
     args.date = datetime.datetime.now().date().isoformat()
 
