@@ -18,25 +18,32 @@ In this example, the template code inside "templates/python_project_simple_relea
 
 Output of `template-gen -h`:
 ```
-usage: template-gen [-h] [--description DESCRIPTION] [--author AUTHOR] [--email EMAIL] [--variables [VARIABLES ...]] template_folder project output_path
+usage: Create project from template [-h] [--template TEMPLATE] [-o OUTPUT_PATH] [-d DESCRIPTION] [--author AUTHOR] [--email EMAIL] [--variables [VARIABLES ...]] [--git-commit GIT_COMMIT] [--git-folder GIT_FOLDER] [-t SETTINGS_TOML] [--edit-settings] [--list-folders] project
 
-Use this program to generate a new project from one of the templates found in the same folder, replacing keys with values within the files.
+Use this program to generate a new project from a template.
 
 positional arguments:
-  project                       Name of the new project
-  output_path                   New path to created project
+  project               Name of the new project
 
 options:
-  -h, --help                    show this help message and exit
-  --description DESCRIPTION     Description of the project
-  --author AUTHOR               Name of the author of the project
-  --email EMAIL                 E-mail of the author of the project
-  --variables [VARIABLES ...]   Other variables used for replacing values in the template. 
-                                List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'
-  --git-repo REPO_LINK          Git repository link to template (either git://<repo_url>.git or http://<repo_url>.git)
-  --git-commit COMMIT_HASH      Commit hash if not creating from the head of the default git branch
-  --git-folder FOLDER           Folder under the git repo where the template is located
-  --template-folder FOLDER      Folder containing template to create project from if not creating from git repo
+  -h, --help            show this help message and exit
+  --template TEMPLATE   Location of the template, either a directory or a git repository
+  -o OUTPUT_PATH, --output-path OUTPUT_PATH
+                        Path to new project to be created. Default is ./<project name>
+  -d DESCRIPTION, --description DESCRIPTION
+                        Description of the project
+  --author AUTHOR       Name of the author of the project
+  --email EMAIL         E-mail of the author of the project
+  --variables [VARIABLES ...]
+                        Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'
+  --git-commit GIT_COMMIT
+                        Commit hash if not creating from the head of the default git branch
+  --git-folder GIT_FOLDER
+                        Folder under the git repo where the template is located. Default is '.'
+  -t SETTINGS_TOML, --settings-toml SETTINGS_TOML
+                        Path to .template-settings.toml file to use as settings for the project
+  --edit-settings       Edit settings such as default template repo and author details
+  --list-folders        Output a list of folders in the root of the git repository
 ```
 
 ### GUI
