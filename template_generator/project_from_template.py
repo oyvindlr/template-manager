@@ -12,6 +12,7 @@ import datetime
 import platform
 from template_generator import git_wrapper as git
 from template_generator import create_gitlab_project
+from __future__ import annotations
 
 from importlib.metadata import version
 from pathlib import Path
