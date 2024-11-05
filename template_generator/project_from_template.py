@@ -9,7 +9,8 @@ import toml
 import tempfile
 import shutil
 import datetime
-from . import git_wrapper as git
+from template_generator import git_wrapper as git
+from template_generator import create_gitlab_project
 
 from importlib.metadata import version
 from pathlib import Path
@@ -290,10 +291,12 @@ def _parse_command_line_arguments(argv, defaults):
     ap.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
     ap.add_argument("--git-commit", help="Commit hash if not creating from the head of the default git branch")
     ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'", **folder_choices)  
+    ap.add_argument("--gitlab-group", help="The group in GitLab to place the project under. If given, a gitlab project will be created in that group.", type=str, default=None)    
     if not running_in_gui:        
         ap.add_argument("-t","--settings-toml", type=Path, help = "Path to .template-settings.toml file to use as settings for the project", **filechooser)
         ap.add_argument("--edit-settings", help= "Edit settings such as default template repo and author details", action='store_true')
         ap.add_argument("--list-folders", help="Output a list of folders in the root of the git repository", action='store_true')
+        ap.add_argument("--no-gitlab-project", help="Only create template, no gitlab project", action='store_true', default=False)
 
     args = ap.parse_args(argv)
 
@@ -340,6 +343,11 @@ def main(argv):
         sys.exit(1)
 
     print(f"New project created successfully in directory {args.output_path}")
+    if not hasattr(args, "no_gitlab_project") or not args.no_gitlab_project:
+        if not running_in_gui and not args.gitlab_group:
+            args.gitlab_group = input("If you want to create a gitlab project, enter the group name. Otherwise hit enter to exit. You can create a gitlab project later by running 'gitlab-create --path "+str(output_path)+"'\n")
+        if args.gitlab_group:
+            create_gitlab_project.main(["--path", str(output_path), "--group", args.gitlab_group])
     return output_path
 
 def entry_point():
@@ -349,7 +357,7 @@ def entry_point():
 
 if gooey_present:
     @Gooey( 
-           default_size=(500, 720),
+           default_size=(500, 920),
             program_name="Create project from template",
             target="template-gui")
     def entry_point_gui(): #Separate entry point for the GUI
