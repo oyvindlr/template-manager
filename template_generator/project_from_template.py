@@ -9,6 +9,7 @@ import toml
 import tempfile
 import shutil
 import datetime
+import platform
 from template_generator import git_wrapper as git
 from template_generator import create_gitlab_project
 
@@ -232,6 +233,16 @@ def _list_folders(args):
     for folder in folders:
         print(folder)
 
+def _edit_settings():
+    if platform.system() == "Windows":
+        os.startfile(_GENERAL_SETTINGS_FILE)
+    elif platform.system() == "Linux":
+        os.system(f"nano {_GENERAL_SETTINGS_FILE}")
+    elif platform.system() == "Darwin":
+        os.system(f"open {_GENERAL_SETTINGS_FILE}")
+    else:
+        print(f"Error: Unknown platform {platform.system()}")
+
 
 def _build(args):
     if hasattr(args, "settings_toml") and args.settings_toml:
@@ -331,7 +342,7 @@ def main(argv):
     defaults = _read_settings()
     args = _parse_command_line_arguments(argv, defaults)
     if hasattr(args, "edit_settings") and args.edit_settings:
-        os.startfile(_GENERAL_SETTINGS_FILE)
+        _edit_settings()
         sys.exit(0)
     if hasattr(args, "list_folders") and args.list_folders:
         _list_folders(args)
@@ -349,6 +360,8 @@ def main(argv):
         if args.gitlab_group:
             create_gitlab_project.main(["--path", str(output_path), "--group", args.gitlab_group])
     return output_path
+
+
 
 def entry_point():
     main(sys.argv[1:])
@@ -370,5 +383,5 @@ else:
         sys.exit(1)
 
 if __name__ == "__main__":
-    entry_point_gui()
+    entry_point()
 
