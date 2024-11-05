@@ -47,7 +47,7 @@ def dir_contains_repo(local_repo):
     return result.returncode == 0
 
 def init(dir):
-    result = subprocess.run(['git', '-C', dir, 'init'])
+    result = subprocess.run(['git', '-C', dir, 'init', '--initial-branch=main'])
     if result.returncode != 0:
         raise GitError(f'Could not initialize git repository.\nGit output:\n{result.stderr.decode()}')
 
@@ -88,3 +88,12 @@ def get_conflicted_files(local_repo):
     result = subprocess.run(command, stdout=subprocess.PIPE, text=True)
     conflicted_files = result.stdout.strip().split('\n')
     return conflicted_files
+
+def push(local_repo, remote = None):
+    command = ['git', '-C', local_repo, 'push']
+    if remote is not None:
+        subprocess.run(['git', '-C', local_repo, 'remote', 'add', 'origin', remote])
+        command.extend(['--set-upstream', 'origin', 'main'])
+    result = subprocess.run(command)
+    if result.returncode != 0:
+        raise GitError(f'Could not push repo {local_repo} to {remote}.\nGit output:\n{result.stderr.decode()}')
