@@ -50,7 +50,7 @@ def _project_settings(args):
 
 def _create_settings_file(project_path: Path, args):
     d = _project_settings(args)
-    with open(project_path / _PROJECT_SETTINGS_FILE_NAME, 'x') as f:
+    with open(project_path / _PROJECT_SETTINGS_FILE_NAME, 'x', encoding='utf-8') as f:
         toml.dump(d, f)
 
 def _read_settings():    
@@ -162,7 +162,7 @@ def _replace_file_contents(file, vars):
     newcontent = _replace_variables(content, vars, _CONTENT_PATTERN)
     newcontent = _unescape_content(newcontent)
     if newcontent != content:
-        Path(file).write_text(newcontent)
+        Path(file).write_text(newcontent, encoding="utf-8")
 
 def _new_path_if_already_exists(output_path:Path, project_name:str):
     if output_path == None:
