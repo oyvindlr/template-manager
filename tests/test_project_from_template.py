@@ -231,7 +231,7 @@ def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_
     assert tomlfile["git_commit"] == "078b406"
 
 
-def test_project_settings_in_toml_file(tmp_path, git_test_repo_direct_path):
+def test_project_settings_in_toml_file(tmp_path, git_test_repo_direct_path):    
     args = argparse.Namespace()
     args.settings_toml = "tests/data/.template_settings.toml"
     args.variables = None
@@ -368,7 +368,23 @@ def test_date(tmp_path, defaultargs):
 
 
 
+def test_toml_correctly_encoded_and_decoded(tmp_path, defaultargs):
+    #This test does not fail if the encoding is not set, and I cannot explain why
+    #
+    defaultargs.template = "tests/data/another_template"
+    defaultargs.author = "ÆØÅ"
+    defaultargs.email = "ÆØÅ@example.com"
+    defaultargs.anewvariable = "åøæ"
 
+    project_from_template._build(defaultargs)
+
+    project_path = tmp_path / defaultargs.project
+
+    tomlfile = get_toml(project_path)
+
+    assert tomlfile["author"] == "ÆØÅ"
+    assert tomlfile["email"] == "ÆØÅ@example.com"
+    assert tomlfile["anewvariable"] == "åøæ"
     
 
 

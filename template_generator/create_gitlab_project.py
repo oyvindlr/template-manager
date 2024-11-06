@@ -65,17 +65,17 @@ def _create_project(args):
     except requests.exceptions.RequestException as ex:
         print(f"Failed to connect to {create_project_url} :", ex)
         exit(1)
-    if response.status_code == 201 or response.status_code == 200:
-        print("Project created successfully")
-    else:
+    if not (response.status_code == 201 or response.status_code == 200):        
         print("Failed to create project: ", response.text)
         exit(1)
+    print("Project created successfully")
+    repo = response.json()['http_url_to_repo']
+    return repo
 
-def _push_code_to_new_project_repo(args):
+def _push_code_to_new_project_repo(args, remote_repo):
     git.init(args.path)
     git.add_all(args.path)
     git.commit(args.path, "Initial commit")
-    remote_repo = f"{args.gitlab_server}/{args.group}/{args.slug}.git"
     git.push(args.path, remote_repo)
     print("Project files successfully pushed to new project repository")
 
@@ -129,8 +129,8 @@ def _main(args):
         args.description = tomlfile["description"]
     args.slug = args.name.replace(" ", "-").lower()
     
-    _create_project(args)
-    _push_code_to_new_project_repo(args)
+    remote_repo = _create_project(args)
+    _push_code_to_new_project_repo(args, remote_repo)
 
 def main(argv):
     args = parse_args(argv)
