@@ -16,6 +16,8 @@ template-gen = "template_generator.project_from_template:entry_point"
 template-gui = "template_generator.project_from_template:entry_point_gui"
 update-template = "template_generator.update_template:entry_point"
 gitlab-new = "template_generator.create_gitlab_project:entry_point"
+template-gen-gen "template_generator.project_from_template:template_gen_gen"
+
 
 [tool.setuptools.dynamic]
 version = {file = "template_generator/VERSION"}

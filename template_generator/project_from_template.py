@@ -363,6 +363,12 @@ def main(argv):
     return output_path
 
 
+def template_gen_gen():
+    """
+    Geir's special function so he can remember how to use the template generator    
+    """
+    print('template-gen "My project" -o "temp" --description "Cloud-based AI blockchain" --author "Geirr" --email geni@naxystech.com --git-folder python_project_simple_ci')
+
 
 def entry_point():
     main(sys.argv[1:])
