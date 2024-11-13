@@ -2,7 +2,6 @@ from __future__ import annotations
 import sys
 import shutil
 import os
-import glob
 import os.path
 import re
 import argparse
@@ -13,7 +12,7 @@ import datetime
 import platform
 from template_generator import git_wrapper as git
 from template_generator import create_gitlab_project
-
+from platformdirs import user_config_dir
 from importlib.metadata import version
 from pathlib import Path
 try:
@@ -53,10 +52,25 @@ def _create_settings_file(project_path: Path, args):
     with open(project_path / _PROJECT_SETTINGS_FILE_NAME, 'x', encoding='utf-8') as f:
         toml.dump(d, f)
 
+def _get_general_settings_path():
+    config_dir = user_config_dir("template-generator")
+    config_path = os.path.join(config_dir, "settings.toml")
+
+    # Ensure the config directory exists
+    os.makedirs(config_dir, exist_ok=True)
+
+    # Copy the default config if it doesn't exist
+    if not os.path.exists(config_path):
+        default_config = _GENERAL_SETTINGS_FILE.read_text()
+        with open(config_path, "w") as config_file:
+            config_file.write(default_config)
+    return Path(config_path)
+
 def _read_settings():    
     d =  {"default_template_repo":None, "email":None, "author":None}
+    toml_path = _get_general_settings_path()
     try:
-        d.update(toml.load(_GENERAL_SETTINGS_FILE))
+        d.update(toml.load(toml_path))
     except:
         pass
     return d
@@ -235,12 +249,13 @@ def _list_folders(args):
         print(folder)
 
 def _edit_settings():
+    settings_file = _get_general_settings_path()
     if platform.system() == "Windows":
-        os.startfile(_GENERAL_SETTINGS_FILE)
+        os.startfile(settings_file)
     elif platform.system() == "Linux":
-        os.system(f"nano {_GENERAL_SETTINGS_FILE}")
+        os.system(f"nano {settings_file}")
     elif platform.system() == "Darwin":
-        os.system(f"open {_GENERAL_SETTINGS_FILE}")
+        os.system(f"open {settings_file}")
     else:
         print(f"Error: Unknown platform {platform.system()}")
 
@@ -367,7 +382,7 @@ def template_gen_gen():
     """
     Geir's special function so he can remember how to use the template generator    
     """
-    print('template-gen "My project" -o "temp" --description "Cloud-based AI blockchain" --author "Geirr" --email geni@naxystech.com --git-folder python_project_simple_ci')
+    print('template-gen "My project" -o "temp" --description "My description" --author "Geirr" --email geni@naxystech.com --git-folder python_project_simple_ci')
 
 
 def entry_point():
