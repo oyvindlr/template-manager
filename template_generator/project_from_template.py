@@ -372,7 +372,7 @@ def main(argv):
     print(f"New project created successfully in directory {args.output_path}")
     if not hasattr(args, "no_gitlab_project") or not args.no_gitlab_project:
         if not running_in_gui and not args.gitlab_group:
-            args.gitlab_group = input("If you want to create a gitlab project, enter the group name. Otherwise hit enter to exit. You can create a gitlab project later by running 'gitlab-create --path "+str(output_path)+"'\n")
+            args.gitlab_group = input("If you want to create a gitlab project, enter the group name. Otherwise hit enter to exit. You can create a gitlab project later by running 'gitlab-new --path "+str(output_path)+"'\n")
         if args.gitlab_group:
             create_gitlab_project.main(["--path", str(output_path), "--group", args.gitlab_group])
     return output_path

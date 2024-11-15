@@ -117,7 +117,7 @@ def main(argv):
 
 
 def _parse_arguments(argv):
-    parser = argparse.ArgumentParser("Update project to latest version of project", description="Uses git's three way merge to merge the latest template changes into a project based on an earlier version of the template")
+    parser = argparse.ArgumentParser("template-update", description="Update project to latest version of project: Uses git's three way merge to merge the latest template changes into a project based on an earlier version of the template")
     parser.add_argument("-d", "--directory", help="Directory containing project. Defaults to the current directory.", type=Path, default=Path("."))
     parser.add_argument("--hash", help="Instead of updating to the latest template version, update to a specific version given by the git commit hash.")
     args = parser.parse_args(argv)
