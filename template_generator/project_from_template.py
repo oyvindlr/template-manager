@@ -181,7 +181,7 @@ def _replace_file_contents(file, vars):
 def _new_path_if_already_exists(output_path:Path, project_name:str):
     if output_path == None:
         return Path(project_name)
-    elif output_path.exists():
+    elif output_path.exists() and output_path.name != project_name:
         return output_path / project_name
     return output_path
 
