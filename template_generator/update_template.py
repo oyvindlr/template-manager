@@ -17,7 +17,7 @@ import shutil
 def _toml_file_with_updated_commit_hash(tomlfile, hash):
     d = toml.load(tomlfile)
     d["git_commit"] = str(hash)
-    new_toml =  tempfile.NamedTemporaryFile(mode="w", delete=False)
+    new_toml =  tempfile.NamedTemporaryFile(mode="w", delete=False, encoding = 'utf8')
     toml.dump(d, new_toml)
     new_toml.close()
     return new_toml
