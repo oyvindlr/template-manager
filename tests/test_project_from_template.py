@@ -13,19 +13,13 @@ import re
 
 @pytest.fixture
 def git_test_repo_path(tmp_path_factory):
+    #Copies the git repo to a temporary path, and renames the "gitdir" folder to ".git"
     oldpath = Path("tests/data/git_template")
     newpath = tmp_path_factory.mktemp("newrepo")
     shutil.copytree(oldpath, newpath, dirs_exist_ok=True)    
     os.rename(newpath / "gitdir", newpath / ".git")
     return str(newpath)
     
-@pytest.fixture
-def git_test_repo_direct_path(): #PROBLEMATIC: If something goes wrong, we may end with a repo where the "gitdir" folder has been renamed to ".git"
-    pathstr = "tests/data/git_template"
-    path = Path(pathstr)
-    os.rename(path / "gitdir", path / ".git")
-    yield pathstr
-    os.rename(path / ".git", path / "gitdir")
 
 @pytest.fixture
 def another_template_path(tmp_path_factory):
@@ -50,6 +44,11 @@ def defaultargs(tmp_path):
     args.settings_toml = None
     return args
 
+
+def get_repo_copy(repo, tmp_path):
+    newpath = tmp_path / repo
+    shutil.copytree(repo, newpath, dirs_exist_ok=True)
+    return str(newpath)
 
 def get_toml(toml_path):
     return toml.load(toml_path / ".template_settings.toml")
@@ -179,7 +178,7 @@ def test_exception_when_wrong_commit_hash(tmp_path, git_test_repo_path):
     args.git_commit = "52655646"
     args.git_folder = None
 
-    with pytest.raises(GitError, match=".*check out commit.*"):    
+    with pytest.raises(GitError, match=".*check out .*"):    
         project_from_template._clone_and_check_out(args, tmp_path)
 
 """
@@ -206,7 +205,7 @@ def test_new_project_contains_toml_file(tmp_path, defaultargs, another_template_
     assert tomlfile["HEI"] == "HO"
     assert tomlfile["HAI"] == "HOI"
     assert not "variables" in tomlfile
-    assert tomlfile["template"] == defaultargs.template
+    assert tomlfile["template"] == Path(defaultargs.template).as_posix()
 
 
 def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_path):
@@ -231,7 +230,8 @@ def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_
     assert tomlfile["git_commit"] == "078b406"
 
 
-def test_project_settings_in_toml_file(tmp_path, git_test_repo_direct_path):    
+@pytest.mark.skipif(not sys.platform.startswith("win"), reason="Having trouble with this on devtools, because the test data resides in the real repo")
+def test_project_settings_in_toml_file(tmp_path):    
     args = argparse.Namespace()
     args.settings_toml = "tests/data/.template_settings.toml"
     args.variables = None
@@ -271,7 +271,7 @@ def test_ignores_that_local_source_is_repo_and_emits_warning_if_files_changed(de
 
     tomlfile = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
 
-    assert tomlfile["template"] == git_test_repo_path
+    assert tomlfile["template"] == Path(git_test_repo_path).as_posix()
     assert capsys.readouterr().out.startswith("Warning: ")
 
 
@@ -315,8 +315,8 @@ def test_git_folder_is_not_copied_to_new_project(defaultargs, tmp_path, git_test
     assert not (tmp_path / defaultargs.project / ".git").exists()
     
 
-def test_spaces_converted_to_underscores_in_project_folder(tmp_path, defaultargs):
-    defaultargs.template = "tests/data/project_sanitize_template"
+def test_spaces_converted_to_underscores_in_project_folder(tmp_path, defaultargs, tmp_path_factory):
+    defaultargs.template = get_repo_copy("tests/data/project_sanitize_template", tmp_path_factory.mktemp("local"))
     defaultargs.project = "Project with spaces"
 
     expected_project_name = "Project_with_spaces"
@@ -330,8 +330,8 @@ def test_spaces_converted_to_underscores_in_project_folder(tmp_path, defaultargs
     assert fullpath.read_text() == defaultargs.project
 
 
-def test_special_lowercase_and_underscore_project_name_variables_are_created_automatically(tmp_path, defaultargs):
-    defaultargs.template = "tests/data/project_sanitize_template"
+def test_special_lowercase_and_underscore_project_name_variables_are_created_automatically(tmp_path, defaultargs, tmp_path_factory):
+    defaultargs.template = get_repo_copy("tests/data/project_sanitize_template", tmp_path_factory.mktemp("local"))
     defaultargs.project = "With-spaces and dashes"
 
     expected_folder_name = "With-spaces_and_dashes"
@@ -353,8 +353,8 @@ def test_special_lowercase_and_underscore_project_name_variables_are_created_aut
     assert lines[3] == "with_spaces_and_dashes"
 
 
-def test_date(tmp_path, defaultargs):
-    defaultargs.template = "tests/data/project_sanitize_template"
+def test_date(tmp_path, defaultargs, tmp_path_factory):
+    defaultargs.template = get_repo_copy("tests/data/project_sanitize_template", tmp_path_factory.mktemp("local"))
 
     project_from_template._build(defaultargs)
 
@@ -368,10 +368,10 @@ def test_date(tmp_path, defaultargs):
 
 
 
-def test_toml_correctly_encoded_and_decoded(tmp_path, defaultargs):
+def test_toml_correctly_encoded_and_decoded(tmp_path, defaultargs, tmp_path_factory):
     #This test does not fail if the encoding is not set, and I cannot explain why
     #
-    defaultargs.template = "tests/data/another_template"
+    defaultargs.template = get_repo_copy("tests/data/another_template", tmp_path_factory.mktemp("local"))
     defaultargs.author = "ÆØÅ"
     defaultargs.email = "ÆØÅ@example.com"
     defaultargs.anewvariable = "åøæ"
@@ -385,7 +385,52 @@ def test_toml_correctly_encoded_and_decoded(tmp_path, defaultargs):
     assert tomlfile["author"] == "ÆØÅ"
     assert tomlfile["email"] == "ÆØÅ@example.com"
     assert tomlfile["anewvariable"] == "åøæ"
-    
+
+def test_checkout_from_non_main_branch(defaultargs, tmp_path, git_test_repo_path):
+    defaultargs.template = git_test_repo_path
+    defaultargs.git_commit = "anotherbranch"
+
+    project_path = project_from_template._build(defaultargs)
+
+    assert Path(tmp_path / defaultargs.project / "file_in_anotherbranch").exists()
+
+    tomlfile = get_toml(project_path)
+
+    assert tomlfile["git_commit"].startswith("23eadff")
+    assert tomlfile["git_branch"] == "anotherbranch"
+
+def test_checkout_from_main_sets_git_branch_empty(defaultargs, tmp_path, git_test_repo_path):
+    defaultargs.template = git_test_repo_path
+
+    project_path = project_from_template._build(defaultargs)
+
+    tomlfile = get_toml(project_path)
+
+    assert tomlfile["git_branch"] == ""
+
+
+def test_checks_out_from_specific_branch_if_branch_exists(defaultargs, tmp_path, git_test_repo_path):
+    defaultargs.template = git_test_repo_path
+
+    #This cannot be set from input args, but can be set in the toml settings file
+    defaultargs.git_branch = "anotherbranch"
+
+    project_path = project_from_template._build(defaultargs)
+
+    tomlfile = get_toml(project_path)
+
+    assert tomlfile["git_branch"] == "anotherbranch"
+    assert tomlfile["git_commit"].startswith("23eadff")
+
+def test_branch_not_set_when_checkout_item_is_not_branch(tmp_path, git_test_repo_path, defaultargs):    
+    defaultargs.template = git_test_repo_path
+    defaultargs.git_commit = "ae481533"
+
+    project_path = project_from_template._build(defaultargs)
+
+    tomlfile = get_toml(project_path)
+
+    assert tomlfile["git_branch"] == ""
 
 
 @pytest.mark.skip(reason="This test only works if there are no local changes, and the\

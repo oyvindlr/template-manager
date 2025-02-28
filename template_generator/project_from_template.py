@@ -33,12 +33,15 @@ _PROJECT_SETTINGS_FILE_NAME = ".template_settings.toml"
 
 _GENERAL_SETTINGS_FILE = Path(__file__).parent / "settings.toml"
 
-
+def _paths_to_posix(var):
+    if isinstance(var, Path):
+        return var.as_posix()
+    return var
 
 def _project_settings(args):
     d = vars(args)
-    #d = {key: str(_paths_to_posix(val)) for key, val in d.items()}
-    d = {key: str(val) for key, val in d.items()}
+    d = {key: str(_paths_to_posix(val)) for key, val in d.items()}
+    #d = {key: str(val) for key, val in d.items()}
     d["template"] = d["git_repo"] if "git_repo" in d and d["git_repo"] else d["template_path"]
     d.pop("git_repo", None)
     d.pop("template_path", None)
@@ -134,11 +137,17 @@ def _add_free_vars_to_args(args):
 
 
 def _clone_and_check_out(args, tempdir):    
-    git.clone(args.git_repo, tempdir)                                    
-    if args.git_commit:        
-        git.check_out_commit(tempdir, args.git_commit)
-    else:
-        args.git_commit = git.get_current_commit_hash(tempdir)
+    git.clone(args.git_repo, tempdir)
+    if not hasattr(args, 'git_branch'):
+        args.git_branch = ""
+    item = args.git_commit            
+    if args.git_branch and not args.git_commit: #If branch given, but not commit, check out branch
+        item = args.git_branch
+    if item:        
+        git.check_out(tempdir, item)
+        if git.is_branch(tempdir,item):
+            args.git_branch = item    
+    args.git_commit = git.get_current_commit_hash(tempdir)
     if not args.git_folder:
         args.git_folder = "."
     return Path(tempdir) / args.git_folder
@@ -185,17 +194,42 @@ def _new_path_if_already_exists(output_path:Path, project_name:str):
         return output_path / project_name
     return output_path
 
-def _check_is_local_source_git_repo(args):
-    if git.dir_contains_repo(args.template):
-        if not git.has_local_changes(args.template):
-            args.git_commit = git.get_current_commit_hash(args.template)
-            args.git_repo = args.template
-            remote = git.get_origin(args.template)
-            if remote and git.hash_exists_on_origin(args.template, args.git_commit):
-                args.git_repo = remote
-        else:
-            print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")
+# def _check_is_local_source_git_repo(args):
+#     if git.dir_contains_repo(args.template):
+#         if not git.has_local_changes(args.template):
+#             args.git_commit = git.get_current_commit_hash(args.template)
+#             args.git_repo = args.template
+#             remote = git.get_origin(args.template)
+#             if remote and git.hash_exists_on_origin(args.template, args.git_commit):
+#                 args.git_repo = remote
+#         else:
+#             print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")
 
+# def _is_git_repo(args):
+#     if args.hasattr("git_repo"): #Contains git repo def from settings file
+#         return True
+#     if args.template.endswith(".git"):#Presumably remote repo
+#         return True
+#     if git.dir_contains_repo(args.template):#Local repo
+#         return True
+#     return False
+
+def _get_repo(args):
+    if args.template.endswith(".git"):#Presumably remote repo
+        return args.template
+    if git.dir_contains_repo(args.template):#Local repo
+        if not git.has_local_changes(args.template):
+            remote = git.get_origin(args.template)
+            hash = args.git_commit if args.git_commit else git.get_current_commit_hash(args.template)
+            if remote and git.hash_exists_on_origin(args.template, hash):
+                return remote
+            return args.template
+        else:
+            print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")        
+            return ""
+    return ""
+
+    
 
 def _get_arguments_from_toml(tomlfilepath, args):
     tomlargs = toml.load(tomlfilepath)
@@ -208,14 +242,13 @@ def _get_arguments_from_toml(tomlfilepath, args):
     return args
 
 def _find_template_source(args):
-    if args.template.endswith(".git") or args.git_commit: #If local folder, but git commit given, also treat as repo
-        args.git_repo = args.template
+    args.git_repo = _get_repo(args)
+    if args.git_repo:        
         tempdir = tempfile.TemporaryDirectory()    
         args.template_path = _clone_and_check_out(args, tempdir.name)
         args.tempdir = tempdir #Bit of a hack; tempdir may be deleted when out of context, so keep it by adding it to the args structure
     elif Path(args.template).exists():
         args.template_path = Path(args.template)
-        _check_is_local_source_git_repo(args)
     else:
         raise TemplateError(f"Provided template source {args.template} is not a git repository or local directory")
     
@@ -316,7 +349,7 @@ def _parse_command_line_arguments(argv, defaults):
     ap.add_argument("--author", help = "Name of the author of the project", default = defaults["author"])
     ap.add_argument("--email", help = "E-mail of the author of the project", default = defaults["email"])
     ap.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
-    ap.add_argument("--git-commit", help="Commit hash if not creating from the head of the default git branch")
+    ap.add_argument("--git-commit", help="Commit hash, tag or branch. Defaults to the main branch.")
     ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'", **folder_choices)  
     ap.add_argument("--gitlab-group", help="The group in GitLab to place the project under. If given, a gitlab project will be created in that group.", type=str, default=None)    
     if not running_in_gui:        

@@ -65,6 +65,10 @@ def main(argv):
     print("Recreating original empty project from template...")
     project_creation_args = ["--settings-toml", str(settings_toml), "--output-path", temp_dir.name, "--no-gitlab-project"]
     proj_dir = project_from_template.main(project_creation_args)
+    
+    #Overwrite new settings_toml with original, since changes in project_from_template may change it's content and cause conflicts
+    os.remove(proj_dir / ".template_settings.toml")
+    shutil.copyfile(settings_toml, proj_dir / ".template_settings.toml")
 
     print("Initializing temporary repository to utilize git merge...")
     git.init(proj_dir)

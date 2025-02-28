@@ -80,3 +80,14 @@ def test_update_template_with_conflicts(tmp_path, git_test_repo_path, capsys):
     out = capsys.readouterr().out
     assert out.find("conflicts") >= 0
     assert out.find("project-based-on-template-file.txt") >= 0
+
+def test_updates_to_most_recent_commit_in_specific_branch(tmp_path, git_test_repo_path):
+    shutil.copytree("tests/data/project_based_on_template_in_another_branch", tmp_path, dirs_exist_ok=True)
+
+    args = ["-d", str(tmp_path)]
+    
+    update_template.main(args)
+
+    d = toml.load(tmp_path / ".template_settings.toml")
+
+    assert d["git_commit"] == "23eadff"
