@@ -10,10 +10,14 @@ def raise_giterror(error, result):
     output = result.stderr if result.stderr != "" else result.stdout
     raise GitError(f'{error}\nGit output:\n{output}')
 
-def check_out_commit(local_repo, commit):
-    result = subprocess.run(['git', '-C', local_repo, 'checkout', commit, '--detach'], capture_output=True, text=True)            
+def check_out(local_repo, item):
+    """
+    Check out the commit, branch or tag with name given in "item"
+    """
+    #result = subprocess.run(['git', '-C', local_repo, 'checkout', item, '--detach'], capture_output=True, text=True)            
+    result = subprocess.run(['git', '-C', local_repo, 'checkout', item], capture_output=True, text=True)
     if result.returncode != 0:
-        raise_giterror('Could not check out commit "{commit}".', result)
+        raise_giterror(f'Could not check out "{item}".', result)
 
 def clone(repo, newdir, *args):
     clone_args = ['git', 'clone', repo, newdir]
@@ -21,6 +25,10 @@ def clone(repo, newdir, *args):
     result = subprocess.run(clone_args, capture_output=True, text=True)
     if result.returncode != 0:
         raise_giterror('Could not clone git repo "{repo}".', result)
+
+def is_branch(local_repo, item):
+    result = subprocess.run(['git', '-C', local_repo, 'rev-parse', '--verify', f"refs/heads/{item}"], capture_output=True)
+    return result.returncode == 0
 
 def get_current_commit_hash(local_repo):
     result = subprocess.run(['git', '-C', local_repo,  'rev-parse', '--short', 'HEAD'], capture_output=True)

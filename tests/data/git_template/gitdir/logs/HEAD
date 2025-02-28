@@ -1,3 +1,8 @@
 0000000000000000000000000000000000000000 ae48153366e47d62ff9e7dcdb5d4ec02c79ec8e9 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1715074219 +0200	commit (initial): initial commit
 ae48153366e47d62ff9e7dcdb5d4ec02c79ec8e9 2d59c9c77d37c47f90422db72012913c528ea237 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1715074256 +0200	commit: Added project file
 2d59c9c77d37c47f90422db72012913c528ea237 078b40681f0f6803ba218e65fd2702654be9ef97 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1715762819 +0200	commit: Wrote text to project file
+078b40681f0f6803ba218e65fd2702654be9ef97 078b40681f0f6803ba218e65fd2702654be9ef97 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1740664142 +0100	checkout: moving from main to anotherbranch
+078b40681f0f6803ba218e65fd2702654be9ef97 23eadffda1440ed4c5575891bcff28f355cc2ca0 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1740664202 +0100	commit: added file in another branch
+23eadffda1440ed4c5575891bcff28f355cc2ca0 078b40681f0f6803ba218e65fd2702654be9ef97 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1740664209 +0100	checkout: moving from anotherbranch to main
+078b40681f0f6803ba218e65fd2702654be9ef97 23eadffda1440ed4c5575891bcff28f355cc2ca0 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1740737102 +0100	checkout: moving from main to anotherbranch
+23eadffda1440ed4c5575891bcff28f355cc2ca0 078b40681f0f6803ba218e65fd2702654be9ef97 Øyvind Rørtveit <oyvind.rortveit@naxystech.com> 1740737150 +0100	checkout: moving from anotherbranch to main
