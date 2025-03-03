@@ -6,6 +6,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "\"${file}\"",
+            "args": ["--variables", "VAR1:VAL1", "VAR2:VAL2"],
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"

@@ -85,10 +85,13 @@ def main(argv):
     git.checkout(proj_dir, "template")
 
     print("Updating to latest template...")
-    new_toml_file = _toml_file_with_updated_commit_hash(settings_toml, args.hash)
+    new_toml_file = _toml_file_with_updated_commit_hash(settings_toml, args.commit)
     project_creation_args[1] = new_toml_file.name
     other_temp_dir = tempfile.TemporaryDirectory()    
     project_creation_args[3] = other_temp_dir.name
+    if args.variables:
+        project_creation_args.append("--variables")        
+        project_creation_args.extend(args.variables)
     other_proj_dir = project_from_template.main(project_creation_args)
     _overwrite_exclude_git_dir(other_proj_dir, proj_dir)
 
@@ -123,7 +126,8 @@ def main(argv):
 def _parse_arguments(argv):
     parser = argparse.ArgumentParser("template-update", description="Update project to latest version of project: Uses git's three way merge to merge the latest template changes into a project based on an earlier version of the template")
     parser.add_argument("-d", "--directory", help="Directory containing project. Defaults to the current directory.", type=Path, default=Path("."))
-    parser.add_argument("--hash", help="Instead of updating to the latest template version, update to a specific version given by the git commit hash.")
+    parser.add_argument("--commit", help="Instead of updating to the latest template version, update to a specific version given by the given git commit hash/branch/tag.")
+    parser.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
     args = parser.parse_args(argv)
     return args
 

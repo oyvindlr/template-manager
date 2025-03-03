@@ -48,6 +48,7 @@ def _project_settings(args):
     d.pop("tempdir", None)
     d.pop("output_path", None)
     d.pop("settings_toml", None)
+    d.pop("variables", None)
     return d
 
 def _create_settings_file(project_path: Path, args):
@@ -194,26 +195,6 @@ def _new_path_if_already_exists(output_path:Path, project_name:str):
         return output_path / project_name
     return output_path
 
-# def _check_is_local_source_git_repo(args):
-#     if git.dir_contains_repo(args.template):
-#         if not git.has_local_changes(args.template):
-#             args.git_commit = git.get_current_commit_hash(args.template)
-#             args.git_repo = args.template
-#             remote = git.get_origin(args.template)
-#             if remote and git.hash_exists_on_origin(args.template, args.git_commit):
-#                 args.git_repo = remote
-#         else:
-#             print("Warning: template folder is a git repository, but has uncommitted changes. You may not be able to recreate this template or update the project at a later time.")
-
-# def _is_git_repo(args):
-#     if args.hasattr("git_repo"): #Contains git repo def from settings file
-#         return True
-#     if args.template.endswith(".git"):#Presumably remote repo
-#         return True
-#     if git.dir_contains_repo(args.template):#Local repo
-#         return True
-#     return False
-
 def _get_repo(args):
     if args.template.endswith(".git"):#Presumably remote repo
         return args.template
@@ -234,7 +215,8 @@ def _get_repo(args):
 def _get_arguments_from_toml(tomlfilepath, args):
     tomlargs = toml.load(tomlfilepath)
     if "git_repo" in tomlargs and tomlargs["git_repo"] != 'None':
-        tomlargs["template"] = "git_repo"
+        tomlargs["template"] = "git_repo"    
+    tomlargs.pop("variables", None) #Individual vars are defined in the toml, so we dont need the "variables" field. We used to not remove the "variables" during project creation, so now we need to disregard it here
     for key, val in tomlargs.items():
         if val == 'None':
             val = None
