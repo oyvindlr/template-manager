@@ -14,6 +14,7 @@ from template_generator import git_wrapper as git
 from template_generator import create_gitlab_project
 from platformdirs import user_config_dir
 from importlib.metadata import version
+from .strip import strip_ifs_and_elses
 from pathlib import Path
 try:
     from gooey import Gooey, GooeyParser #Create GUI from cmd-line app
@@ -86,12 +87,18 @@ def _find_vars_in_file_names(filelist:list[Path]) -> set:
     vars_ = [var.strip('%') for var in vars_]
     return set(vars_)
 
+def remove_if_and_else(vars_):
+    for var in vars_.copy():
+        if var.startswith("if(") or var.startswith("elseif(") or var == "else" or var == "endif":
+            vars_.remove(var)
+
 def _find_vars_in_file(filename):
     with open(filename) as f:
         try:
             content = f.read()
             vars_ = re.findall(_CONTENT_PATTERN, content)
             vars_ = [var.strip('%') for var in vars_]
+            remove_if_and_else(vars_) #Variables that are only used in if() and elseif() statements are not required
             vars_ = set(vars_)
         except UnicodeDecodeError:
             vars_ = set() #Binary file, just ignore
@@ -164,6 +171,8 @@ def _exception_if_required_args_are_not_present(args, required_vars):
 def _replace_variables(string, vars, pattern):
     return re.sub(pattern, lambda x:getattr(vars, x.group().strip('%')), string)
 
+
+
 def _replace_filenames(files, vars, outdir: Path, files_basedir):        
     for file in files:
         filepath = Path(file)
@@ -183,7 +192,8 @@ def _replace_file_contents(file, vars):
         content = Path(file).read_text()
     except UnicodeDecodeError:
         return #Binary file, just ignore
-    newcontent = _replace_variables(content, vars, _CONTENT_PATTERN)
+    newcontent = strip_ifs_and_elses(content, __builtins__["vars"](vars))
+    newcontent = _replace_variables(newcontent, vars, _CONTENT_PATTERN)
     newcontent = _unescape_content(newcontent)
     if newcontent != content:
         Path(file).write_text(newcontent, encoding="utf-8")

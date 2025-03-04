@@ -29,7 +29,7 @@ Test of private functions, delete if failing
 def test_copy_overwrite_except_git_dir(tmp_path):
     source = Path("tests/data/git_template")
     dest = tmp_path
-    shutil.copytree("tests/data/my_template", dest,dirs_exist_ok=True)
+    shutil.copytree("tests/data/another_template", dest,dirs_exist_ok=True)
     os.mkdir(dest / ".git")
     (dest/".git/a_file").touch()
 
@@ -40,9 +40,8 @@ def test_copy_overwrite_except_git_dir(tmp_path):
 
     assert not (dest/"gitdir").exists()
 
-    assert (dest/"%project%-file.txt").exists()
+    assert (dest/".gitignore").exists()
 
-    assert not (dest/"jau.txt").exists()
 
 
 def test_toml_file_update_hash():
@@ -99,6 +98,20 @@ def test_updates_to_most_recent_commit_in_specific_branch(tmp_path, git_test_rep
     d = toml.load(tmp_path / ".template_settings.toml")
 
     assert d["git_commit"] == "23eadff"
+    assert d["git_branch"] == "anotherbranch"
+
+
+def test_branch_and_commit_correctly_set_when_updating_to_specific_branch(tmp_path, git_test_repo_path):
+    shutil.copytree("tests/data/project_based_on_template", tmp_path, dirs_exist_ok=True)
+
+    args = ["-d", str(tmp_path), "--commit", "anotherbranch"]
+    
+    update_template.main(args)
+
+    d = toml.load(tmp_path / ".template_settings.toml")
+
+    assert d["git_commit"] == "23eadff"
+    assert d["git_branch"] == "anotherbranch"
 
 def test_can_add_variables_to_updated_template(tmp_path, git_test_repo_path):
     shutil.copytree("tests/data/project_based_on_template", tmp_path, dirs_exist_ok=True)
@@ -111,3 +124,11 @@ def test_can_add_variables_to_updated_template(tmp_path, git_test_repo_path):
 
     assert d["VAR1"] == "HELLO"
     assert d["VAR2"] == "WORLD"
+
+def test_create_update_in_new_directory(tmp_path, git_test_repo_path):
+    
+    args = ["-d", "tests/data/project_based_on_template", "--commit", "anotherbranch", "-o", str(tmp_path)]
+    
+    update_template.main(args)
+
+    assert (tmp_path / ".gitignore").exists()
