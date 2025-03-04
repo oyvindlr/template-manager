@@ -113,7 +113,7 @@ def main(argv):
     conflicts = git.merge(proj_dir, "template")
     
     print("Copying merged repo contents into local project directory...")
-    _overwrite_exclude_git_dir(proj_dir, args.directory)
+    _overwrite_exclude_git_dir(proj_dir, args.output_path)
 
     print(f"Merging completed! There were {len(conflicts)} merge conflicts.")
     if len(conflicts) > 0:
@@ -126,9 +126,12 @@ def main(argv):
 def _parse_arguments(argv):
     parser = argparse.ArgumentParser("template-update", description="Update project to latest version of project: Uses git's three way merge to merge the latest template changes into a project based on an earlier version of the template")
     parser.add_argument("-d", "--directory", help="Directory containing project. Defaults to the current directory.", type=Path, default=Path("."))
+    parser.add_argument("-o", "--output-path", type=Path, help="Path where the updated project will be stored. By default, the project will be updated in-place.", default=None)
     parser.add_argument("--commit", help="Instead of updating to the latest template version, update to a specific version given by the given git commit hash/branch/tag.")
     parser.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
     args = parser.parse_args(argv)
+    if args.output_path is None:
+        args.output_path = args.directory
     return args
 
 

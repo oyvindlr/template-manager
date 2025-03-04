@@ -444,3 +444,21 @@ def test_remote_url_is_correct_when_read_from_local_repo(defaultargs, tmp_path):
     tomlfile = get_toml(project_path)
 
     assert tomlfile["git_repo"] == "http://devtools/python/template-generator.git"
+
+def test_removes_code_on_if_when_variable_does_not_exist(defaultargs, tmp_path_factory):
+    defaultargs.template = get_repo_copy("tests/data/iftemplate", tmp_path_factory.mktemp("local"))
+    
+    project_path = project_from_template._build(defaultargs)
+
+    assert (project_path / "ifsandbuts.txt").read_text() == ""
+
+
+def test_does_not_remove_code_on_if_when_variable_does_exist(defaultargs, tmp_path_factory):
+    defaultargs.template = get_repo_copy("tests/data/iftemplate", tmp_path_factory.mktemp("hei"))
+    defaultargs.sayhello = "Yes"
+    
+    project_path = project_from_template._build(defaultargs)
+
+    assert (project_path / "ifsandbuts.txt").read_text() == "hello"
+
+
