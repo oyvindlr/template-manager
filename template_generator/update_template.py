@@ -24,8 +24,11 @@ def _toml_file_with_updated_commit_hash(tomlfile, hash):
 
 
 
-def _overwrite_exclude_git_dir(source, dest, source_gitdir = ".git"):
-    _remove_all_but_git_dir(dest)
+def _overwrite_exclude_git_dir(source: Path, dest: Path, source_gitdir = ".git"):
+    if dest.exists():
+        _remove_all_but_git_dir(dest)
+    else:
+        dest.mkdir()
     _copy_all_but_one_dir(source, dest, source_gitdir)
 
 def _copy_all_but_one_dir(source, dest, retain_dir):

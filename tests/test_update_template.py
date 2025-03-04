@@ -132,3 +132,13 @@ def test_create_update_in_new_directory(tmp_path, git_test_repo_path):
     update_template.main(args)
 
     assert (tmp_path / ".gitignore").exists()
+
+    
+def test_create_update_in_nonexistent_directory(git_test_repo_path, tmp_path_factory):
+    tmp_path = tmp_path_factory.getbasetemp() / "newdir"
+    
+    args = ["-d", "tests/data/project_based_on_template", "--commit", "anotherbranch", "-o", str(tmp_path)]
+    
+    update_template.main(args)
+
+    assert (tmp_path / ".gitignore").exists()
