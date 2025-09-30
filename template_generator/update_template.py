@@ -41,15 +41,16 @@ def _copy_all_but_one_dir(source, dest, retain_dir):
         for dir in dirs:
             os.mkdir(dest / relroot / dir)
 
-def _remove_all_but_git_dir(dir):
-    for root, dirs, files in os.walk(dir, topdown=False):
-        if root.find(".git") < 0:
-            for file in files:
-                os.remove(Path(root) / file)
-            if ".git" in dirs:
-                dirs.remove(".git")
-            for dir in dirs:
-                os.rmdir(Path(root)/dir)
+
+def _remove_all_but_git_dir(root: Path):
+    for entry in root.iterdir():
+        if entry.name == ".git":
+            continue
+        if entry.is_file() or entry.is_symlink():
+            entry.unlink()
+        elif entry.is_dir():
+            shutil.rmtree(entry, ignore_errors=True)
+
    
 
 
