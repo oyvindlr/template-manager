@@ -31,15 +31,30 @@ def _overwrite_exclude_git_dir(source: Path, dest: Path, source_gitdir = ".git")
         dest.mkdir()
     _copy_all_but_one_dir(source, dest, source_gitdir)
 
-def _copy_all_but_one_dir(source, dest, retain_dir):
-    for root, dirs, files in os.walk(source, topdown=True):
-        relroot = Path(root).relative_to(source)
-        for file in files:
-            shutil.copy2(Path(root) / file, dest / relroot / file)            
-        if retain_dir in dirs:
-            dirs.remove(retain_dir)
-        for dir in dirs:
-            os.mkdir(dest / relroot / dir)
+
+def _copy_all_but_one_dir(source: Path, dest: Path, retain_dir: str):
+    """
+    Recursively copy contents of `source` into `dest`, skipping any directory
+    whose name equals `retain_dir` (e.g., '.git'), at any depth.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+
+    for entry in source.iterdir():
+        # Skip the excluded directory (by name) at any depth
+        if entry.is_dir() and entry.name == retain_dir:
+            continue
+
+        target = dest / entry.name
+
+        if entry.is_dir():
+            # Recreate directory and recurse
+            target.mkdir(exist_ok=True)
+            _copy_all_but_one_dir(entry, target, retain_dir)
+        else:
+            # For files (and symlinks), copy with metadata
+            # Note: on Windows, symlink creation often requires privileges;
+            # copy2 with follow_symlinks=True (default) mirrors the original behavior.
+            shutil.copy2(entry, target)
 
 
 def _remove_all_but_git_dir(root: Path):
