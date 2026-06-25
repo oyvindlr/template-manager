@@ -69,7 +69,7 @@ def _create_project(args):
         print("Failed to create project: ", response.text)
         exit(1)
     print("Project created successfully")
-    repo = response.json()['http_url_to_repo']
+    repo = response.json()['ssh_url_to_repo']
     return repo
 
 def _push_code_to_new_project_repo(args, remote_repo):
