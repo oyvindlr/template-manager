@@ -368,9 +368,12 @@ def _parse_command_line_arguments(argv, defaults):
 
 def  _add_special_variables(args):
     args.project_folder = args.project.replace(" ", "_")
-    args.project_us = args.project_folder.replace("-", "_")
+    args.project_us = args.project_folder.replace("-", "_")    
     args.project_lc = args.project.replace(" ", "-").lower()
+    args.project_kebab = args.project_lc
     args.project_us_lc = args.project_us.lower()
+    args.project_snake = args.project_us_lc
+    args.project_camel = args.project.replace(" ", "").replace("_", "").replace("-", "")
     args.date = datetime.datetime.now().date().isoformat()
 
 def _check_arguments(args): 
