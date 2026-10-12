@@ -7,7 +7,11 @@ pythonpath = [
 name = "template-manager"
 description = "A small program to generate templates by replacing key names in files and file/folder names by specific values"
 authors= [{name = "Øyvind Rørtveit", email = "oyvind.rortveit@naxystech.com"}]
-dependencies =["toml", "platformdirs", "requests"]
+dependencies =[
+    "toml",
+    "platformdirs",
+    "requests",
+]
 dynamic = ["version"]
 readme = "README.md"
 
@@ -25,3 +29,14 @@ version = {file = "template_manager/VERSION"}
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+  "pytest>=9.1.1",
+  "pytest-cov",
+  "pytest-mock",
+  "requests-mock"
+]
+
+[project.optional-dependencies]
+gui = ["gooey"]

@@ -1,7 +1,8 @@
 """
 template_manager
 
-A small program to generate templates by replacing key names  in files and file/folder names by specific values
+A small program to generate projects from templates by replacing key names  in files and file/folder names by specific values.
+Also handles updating existing projects with new template changes.
 """
 from pathlib import Path
 
