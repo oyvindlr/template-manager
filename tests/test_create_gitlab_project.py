@@ -12,7 +12,7 @@ def default_args():
 
 @pytest.fixture
 def actual_headers():
-    return {"PRIVATE-TOKEN": "glpat-MxjLUqZCXgWDCs4zveAe"}# Token will expire early november 2024
+    return {"PRIVATE-TOKEN": "enter_token_here_to_run_test"}
 
 
 def test_find_group_id(requests_mock, default_args):
