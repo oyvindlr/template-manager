@@ -1,7 +1,7 @@
 import pytest
 import pytest_mock
 import argparse
-from template_generator import create_gitlab_project
+from template_manager import create_gitlab_project
 
 @pytest.fixture
 def default_args():

@@ -1,11 +1,11 @@
-# Template generator
+# Template manager
 
-A small program to generate templates by replacing key names in files and file/folder names by specific values. Templates to use with the template generator can be found in the [templates project](http://devtools/general/templates).
+A small program to generate projects from templates by replacing key names in files and file/folder names by specific values. Templates to use with the template manager can be found in the [templates project](http://devtools/general/templates).
 
 ## Creating a new project from an existing template
 First, install the program using
 ```
-pip install template-generator
+pip install template-manager
 ```
 You can now either run the program as a command line application, or as a GUI.
 

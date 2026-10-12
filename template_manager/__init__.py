@@ -1,5 +1,5 @@
 """
-template_generator
+template_manager
 
 A small program to generate templates by replacing key names  in files and file/folder names by specific values
 """

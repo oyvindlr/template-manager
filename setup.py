@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name='template_generator',    
-    packages=['template_generator'],
-    package_data={'template_generator': ['settings.toml']},
+    name='template_manager',    
+    packages=['template_manager'],
+    package_data={'template_manager': ['settings.toml']},
 )

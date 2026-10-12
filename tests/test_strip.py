@@ -1,4 +1,4 @@
-from template_generator.strip import strip_ifs_and_elses
+from template_manager.strip import strip_ifs_and_elses
 import pytest
 
 def test_ifs_and_elses():

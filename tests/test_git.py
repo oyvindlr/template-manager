@@ -1,5 +1,5 @@
 import pytest
-import template_generator.git_wrapper as git
+import template_manager.git_wrapper as git
 import os
 from pathlib import Path
 import shutil

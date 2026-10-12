@@ -1,5 +1,5 @@
 import pytest
-from template_generator import update_template
+from template_manager import update_template
 from pathlib import Path
 import shutil
 import os

@@ -2,12 +2,12 @@
 Functions used to update a project based on a given template to the latest version of the
 template, using git's three-way merge
 """
-from template_generator import project_from_template
+from template_manager import project_from_template
 import argparse
 from pathlib import Path
 import sys
 import tempfile
-import template_generator.git_wrapper  as git
+import template_manager.git_wrapper  as git
 import toml
 import os
 import shutil

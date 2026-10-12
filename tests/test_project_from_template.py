@@ -1,8 +1,8 @@
 import pytest
 import argparse
-from template_generator import project_from_template
-from template_generator.project_from_template import TemplateError
-from template_generator.git_wrapper import GitError
+from template_manager import project_from_template
+from template_manager.project_from_template import TemplateError
+from template_manager.git_wrapper import GitError
 from pathlib import Path
 import toml
 import os
@@ -435,7 +435,7 @@ def test_branch_not_set_when_checkout_item_is_not_branch(tmp_path, git_test_repo
 
 @pytest.mark.skip(reason="This test only works if there are no local changes, and the\
                   current repo is in sync with origin, and assumes that origin\
-                  is devtools/python/template_generator")
+                  is devtools/python/template_manager")
 def test_remote_url_is_correct_when_read_from_local_repo(defaultargs, tmp_path):
     defaultargs.templateh = Path("tests/data/another_template")
 
@@ -443,7 +443,7 @@ def test_remote_url_is_correct_when_read_from_local_repo(defaultargs, tmp_path):
 
     tomlfile = get_toml(project_path)
 
-    assert tomlfile["git_repo"] == "http://devtools/python/template-generator.git"
+    assert tomlfile["git_repo"] == "http://devtools/python/template-manager.git"
 
 def test_removes_code_on_if_when_variable_does_not_exist(defaultargs, tmp_path_factory):
     defaultargs.template = get_repo_copy("tests/data/iftemplate", tmp_path_factory.mktemp("local"))

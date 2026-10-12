@@ -10,8 +10,8 @@ import tempfile
 import shutil
 import datetime
 import platform
-from template_generator import git_wrapper as git
-from template_generator import create_gitlab_project
+from template_manager import git_wrapper as git
+from template_manager import create_gitlab_project
 from platformdirs import user_config_dir
 from importlib.metadata import version
 from .strip import strip_ifs_and_elses
@@ -58,7 +58,7 @@ def _create_settings_file(project_path: Path, args):
         toml.dump(d, f)
 
 def _get_general_settings_path():
-    config_dir = user_config_dir("template-generator")
+    config_dir = user_config_dir("template-manager")
     config_path = os.path.join(config_dir, "settings.toml")
 
     # Ensure the config directory exists
@@ -355,11 +355,11 @@ def _parse_command_line_arguments(argv, defaults):
     #Version argument only relevant when recreating project using toml file. May be used for forward compatibility, to generate templates and toml files as they would be
     #generated using that specific version of this program
     try:
-        args.version = version("template_generator")
+        args.version = version("template_manager")
     except:
         try:
-            import template_generator
-            args.version = template_generator.__version__
+            import template_manager
+            args.version = template_manager.__version__
         except:
             args.version = "0.0.0"
 
@@ -405,7 +405,7 @@ def main(argv):
 
 def template_gen_gen():
     """
-    Geir's special function so he can remember how to use the template generator    
+    Geir's special function so he can remember how to use the template manager    
     """
     print('template-gen "My project" -o "temp" --description "My description" --author "Geirr" --email geni@naxystech.com --git-folder python_project_simple_ci')
 

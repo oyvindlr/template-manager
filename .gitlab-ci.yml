@@ -14,7 +14,7 @@ default:
 test-job:
   stage: test
   script:
-    - pytest --cov=template_generator --cov-report term --cov-report xml:coverage.xml --junitxml=testreport.xml tests/
+    - pytest --cov=template_manager --cov-report term --cov-report xml:coverage.xml --junitxml=testreport.xml tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always
@@ -39,9 +39,9 @@ prepare-release:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
-        - template_generator/VERSION
+        - template_manager/VERSION
   script:
-    - VERSION=$(cat template_generator/VERSION)
+    - VERSION=$(cat template_manager/VERSION)
     - API_ENDPOINT_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/repository/changelog?version=$VERSION&branch=${CI_COMMIT_BRANCH}"        
     - echo $API_ENDPOINT_URL
     - AUTH_HEADER="PRIVATE-TOKEN:${CI_API_TOKEN}"
@@ -61,7 +61,7 @@ release-job:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
-        - template_generator/VERSION
+        - template_manager/VERSION
   needs:
     - job: prepare-release
       artifacts: true
@@ -69,7 +69,7 @@ release-job:
   script:
     echo "Creating release version $VERSION"
   release:
-    name: "template_generator v. $VERSION"
+    name: "template_manager v. $VERSION"
     description: release_notes.md
     tag_name: $VERSION
     
@@ -79,7 +79,7 @@ deploy-release:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
-        - template_generator/VERSION
+        - template_manager/VERSION
   script:
     - pip install twine
     - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/4/packages/pypi dist/*

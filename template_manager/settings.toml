@@ -1,4 +1,4 @@
-# Settings for the template generator
+# Settings for the template manager
 
 default_template_repo = "http://devtools/general/templates.git"
 

@@ -1,4 +1,4 @@
-from template_generator import git_wrapper as git
+from template_manager import git_wrapper as git
 import argparse
 import os
 import toml
