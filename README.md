@@ -7,6 +7,10 @@ First, install the program using
 ```
 pip install template-manager
 ```
+To include the gooey-package that is required to run the program as a GUI, install using 
+```
+pip install template-manager[gui]
+```
 You can now either run the program as a command line application, or as a GUI.
 
 ### Command line application
