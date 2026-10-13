@@ -141,6 +141,16 @@ def test_replace_file_content(tmp_path):
 
     assert file.read_text() == "Hello world!"
 
+def test_replace_file_content_removes_utf8_bom(tmp_path):
+    args = argparse.Namespace()
+    args.var1 = "world"
+    file = tmp_path / "my_file.txt"
+    file.write_bytes(b"\xef\xbb\xbfHello %var1%")
+
+    project_from_template._replace_file_contents(file, args)
+
+    assert file.read_bytes() == b"Hello world"
+
 def test_clone_repo(tmp_path, git_test_repo_path):
     args = argparse.Namespace()
     args.git_repo = git_test_repo_path

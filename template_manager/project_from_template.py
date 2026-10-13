@@ -189,7 +189,7 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
 
 def _replace_file_contents(file, vars):
     try:
-        content = Path(file).read_text()
+        content = Path(file).read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
         return #Binary file, just ignore
     newcontent = strip_ifs_and_elses(content, __builtins__["vars"](vars))
