@@ -351,6 +351,11 @@ def test_special_lowercase_and_underscore_project_name_variables_are_created_aut
     assert lines[1] == "With_spaces_and_dashes"
     assert lines[2] == "with-spaces-and-dashes"
     assert lines[3] == "with_spaces_and_dashes"
+    assert lines[4] == "WithSpacesAndDashes"
+    assert lines[5] == "WITH_SPACES_AND_DASHES"
+    assert lines[6] == "with_spaces_and_dashes"
+    assert lines[7] == "with-spaces-and-dashes"
+    assert lines[8] == "withSpacesAndDashes"
 
 
 def test_date(tmp_path, defaultargs, tmp_path_factory):

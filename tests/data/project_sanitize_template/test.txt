@@ -2,3 +2,8 @@
 %project_us%
 %project_lc%
 %project_us_lc%
+%ProjectPascal%
+%PROJECT_UPPER%
+%project_snake%
+%project_kebab%
+%projectCamel%

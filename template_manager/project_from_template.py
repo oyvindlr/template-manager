@@ -373,7 +373,9 @@ def  _add_special_variables(args):
     args.project_kebab = args.project_lc
     args.project_us_lc = args.project_us.lower()
     args.project_snake = args.project_us_lc
-    args.project_camel = args.project.replace(" ", "").replace("_", "").replace("-", "")
+    args.PROJECT_UPPER = args.project_us.upper()
+    args.ProjectPascal = "".join(word.capitalize() for word in args.project_us.split("_"))
+    args.projectCamel = args.ProjectPascal[0].lower() + args.ProjectPascal[1:]
     args.date = datetime.datetime.now().date().isoformat()
 
 def _check_arguments(args): 
