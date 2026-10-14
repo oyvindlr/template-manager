@@ -58,17 +58,43 @@ def test_invalid_namespace_and_bare_variable():
         convert_template("%project-name%", namespace="")
 
 
-def test_cli_stdin_and_files(tmp_path):
+def test_cli_requires_output(tmp_path):
     command = [sys.executable, "-m", "template_manager.cookiecutter"]
-    result = subprocess.run(command + ["--namespace", ""], input="%name%\n", text=True, capture_output=True, check=True)
-    assert result.stdout == "{{ name }}\n"
+    source = tmp_path / "source.txt"
+    source.write_text("%name%\n")
+    result = subprocess.run(command + [str(source)], capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "--output" in result.stderr
+
+
+def test_cli_converts_file(tmp_path):
+    command = [sys.executable, "-m", "template_manager.cookiecutter"]
     source = tmp_path / "source.txt"
     output = tmp_path / "output.txt"
     source.write_bytes(b"%name%\r\n")
     subprocess.run(command + [str(source), "--output", str(output)], check=True)
     assert output.read_bytes() == b"{{ cookiecutter.name }}\r\n"
+
+
+def test_cli_recursively_converts_folder_contents_and_filenames(tmp_path):
+    command = [sys.executable, "-m", "template_manager.cookiecutter"]
+    source = tmp_path / "template"
+    (source / "%folder%").mkdir(parents=True)
+    (source / "%folder%" / "%name%.txt").write_text("Hello %name%!\n")
+    output = tmp_path / "converted"
+    subprocess.run(command + [str(source), "-o", str(output)], check=True)
+    assert (output / "{{ cookiecutter.folder }}" / "{{ cookiecutter.name }}.txt").read_text() == (
+        "Hello {{ cookiecutter.name }}!\n"
+    )
+
+
+def test_cli_conversion_error_does_not_overwrite_file(tmp_path):
+    command = [sys.executable, "-m", "template_manager.cookiecutter"]
+    source = tmp_path / "source.txt"
+    output = tmp_path / "output.txt"
     source.write_text("%else%")
-    result = subprocess.run(command + [str(source), "--output", str(output)], capture_output=True, text=True)
+    output.write_bytes(b"unchanged")
+    result = subprocess.run(command + [str(source), "-o", str(output)], capture_output=True, text=True)
     assert result.returncode == 1
     assert "Conversion failed" in result.stderr
-    assert output.read_bytes() == b"{{ cookiecutter.name }}\r\n"
+    assert output.read_bytes() == b"unchanged"

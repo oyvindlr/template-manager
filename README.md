@@ -103,15 +103,18 @@ You can use any keywords you wish. The keywords "project", "description", "autho
 
 ### Converting templates to Cookiecutter
 
-Convert a UTF-8 template file using:
+Convert a UTF-8 template file or folder using:
 
 ```bash
 template-to-cookiecutter source.txt -o converted.txt
+template-to-cookiecutter ./template-folder -o ./converted-folder
 # Also available without the console script:
 python -m template_manager.cookiecutter source.txt -o converted.txt
 ```
 
-With no input or output path, the command reads stdin or writes stdout. It converts
+For a folder input, all files are converted recursively, including template
+placeholders in relative filenames and folder names. `-o` is required and must
+be a filename for file input or a folder for folder input. The command converts
 `%project%` to `{{ cookiecutter.project }}` and conditional blocks to Jinja:
 `%if(enabled)%` becomes `{% if ... %}`, `%elseif(other)%` becomes `{% elif ... %}`,
 and `%else%` / `%endif%` become `{% else %}` / `{% endif %}`. Nested blocks are

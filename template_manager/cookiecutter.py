@@ -3,7 +3,6 @@
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 
@@ -68,18 +67,29 @@ def convert_template(content: str, *, namespace: str = "cookiecutter", filename:
 
 def entry_point():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", nargs="?", type=Path, help="UTF-8 input file; default: stdin")
-    parser.add_argument("-o", "--output", type=Path, help="UTF-8 output file; default: stdout")
+    parser.add_argument("template", type=Path, help="UTF-8 template file or folder")
+    parser.add_argument("-o", "--output", type=Path, required=True,
+                        help="Output file for a template file, or output folder for a template folder")
     parser.add_argument("--namespace", default="cookiecutter", help="Variable namespace; use '' for bare Jinja variables")
-    parser.add_argument("--filename", action="store_true", help="Convert a filename string using ^%% escapes")
     args = parser.parse_args()
     try:
-        content = args.input.read_bytes().decode("utf-8") if args.input else sys.stdin.read()
-        converted = convert_template(content, namespace=args.namespace, filename=args.filename)
-        if args.output:
-            args.output.write_bytes(converted.encode("utf-8"))
+        if args.template.is_dir():
+            source_files = [path for path in args.template.rglob("*") if path.is_file()]
+            args.output.mkdir(parents=True, exist_ok=True)
+            for source in source_files:
+                relative = source.relative_to(args.template)
+                converted_path = Path(*(convert_template(part, namespace=args.namespace, filename=True)
+                                         for part in relative.parts))
+                destination = args.output / converted_path
+                content = source.read_bytes().decode("utf-8")
+                converted = convert_template(content, namespace=args.namespace)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(converted.encode("utf-8"))
         else:
-            sys.stdout.write(converted)
+            content = args.template.read_bytes().decode("utf-8")
+            converted = convert_template(content, namespace=args.namespace)
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_bytes(converted.encode("utf-8"))
     except (OSError, UnicodeError, ValueError) as error:
         parser.exit(1, f"Conversion failed: {error}\n")
 
