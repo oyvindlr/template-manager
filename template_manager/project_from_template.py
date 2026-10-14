@@ -214,15 +214,35 @@ def _replace_variables(string, vars, pattern):
 
 
 def _replace_filenames(files, vars, outdir: Path, files_basedir):        
+    outdir.mkdir(parents=True, exist_ok=True)
+    output_root = outdir.resolve()
     for file in files:
         filepath = Path(file)
         relfile = filepath.relative_to(files_basedir)        
         if getattr(vars, "template_syntax", None) == "cookiecutter":
-            newfile = _render_cookiecutter(str(relfile), vars)
+            # An excluded directory excludes its descendants too. Stop before
+            # rendering descendant names, which may refer to missing variables.
+            components = []
+            for component in relfile.parts:
+                rendered = _render_cookiecutter(component, vars)
+                if not rendered:
+                    break
+                if Path(rendered).is_absolute():
+                    raise TemplateError(f"Rendered path is absolute: {relfile}")
+                components.append(rendered)
+            else:
+                newfile = str(Path(*components))
+            if len(components) != len(relfile.parts):
+                continue
         else:
             newfile = _replace_variables(str(relfile), vars, _FILENAME_PATTERN)
             newfile = _unescape_filename(newfile)
         newfilepath = outdir / newfile        
+        if Path(newfile).is_absolute():
+            raise TemplateError(f"Rendered path is absolute: {relfile}")
+        resolved = newfilepath.resolve()
+        if resolved == output_root or not resolved.is_relative_to(output_root):
+            raise TemplateError(f"Rendered path escapes the output directory: {relfile}")
         if not filepath.is_dir():
             Path(os.path.dirname(newfilepath)).mkdir(parents = True, exist_ok = True)
             shutil.copy(filepath, newfilepath)
