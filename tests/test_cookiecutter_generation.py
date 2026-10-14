@@ -122,3 +122,73 @@ def test_cli_cookiecutter_generation(tmp_path):
         "--template", str(template), "-o", str(output), "--cookiecutter-syntax", "--no-gitlab-project",
     ], check=True, capture_output=True, text=True)
     assert (output / "cli_project.txt").read_text() == "CLI Project"
+
+
+@pytest.mark.parametrize("prefix", ["", "parent/"])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_conditional_directory_exclusion(generate, prefix, enabled):
+    filename = prefix + "{% if enabled == 'true' %}optional{% endif %}/config.txt"
+    output = generate("configuration", filename=filename, variables=[f"enabled:{str(enabled).lower()}"])
+    if enabled:
+        assert (output / prefix / "optional/config.txt").read_text() == "configuration"
+    else:
+        assert not (output / "config.txt").exists()
+        assert not (output / "parent").exists()
+        assert list(output.rglob("config.txt")) == []
+
+
+def test_missing_conditional_flag_excludes_descendants(generate):
+    output = generate("{{ missing }}", filename="{% if enabled %}optional{% endif %}/{{ missing }}.txt")
+    assert {path.name for path in output.iterdir()} == {"binary.dat", ".template_settings.toml"}
+
+
+def test_empty_filename_is_excluded(generate):
+    output = generate("unused", filename="{% if enabled %}config.txt{% endif %}")
+    assert not (output / "config.txt").exists()
+
+
+@pytest.mark.parametrize("syntax, filename", [
+    ("cookiecutter", "{{ target }}"), ("legacy", "%target%"),
+])
+@pytest.mark.parametrize("target", ["../escape.txt", "safe/../../escape.txt", "."])
+def test_rejects_escaping_rendered_paths(generate, syntax, filename, target):
+    with pytest.raises(generator.TemplateError, match="escapes the output directory"):
+        generate("must not escape", filename=filename, flags=[f"--{syntax}-syntax"], variables=[f"target:{target}"])
+
+
+def test_rejects_absolute_rendered_component(generate, tmp_path):
+    outside = tmp_path / "outside.txt"
+    outside.write_text("preserve me")
+    with pytest.raises(generator.TemplateError, match="absolute"):
+        generate("must not overwrite", filename="parent/{{ target }}", variables=[f"target:{outside}"])
+    assert outside.read_text() == "preserve me"
+
+
+def test_fully_excluded_template_still_saves_settings(tmp_path):
+    template = tmp_path / "template"
+    template.mkdir()
+    folder = template / "{% if enabled %}optional{% endif %}"
+    folder.mkdir()
+    (folder / "config.txt").write_text("excluded")
+    args = generator._parse_command_line_arguments([
+        "Project", "--template", str(template), "-o", str(tmp_path / "output"),
+    ], {"default_template_repo": None, "author": None, "email": None})
+    output = generator._build(args)
+    assert {path.name for path in output.iterdir()} == {".template_settings.toml"}
+
+
+def test_rejects_output_symlink_escape(tmp_path):
+    import argparse
+    template = tmp_path / "template"
+    template.mkdir()
+    file = template / "{{ target }}"
+    file.write_text("must not escape")
+    output = tmp_path / "output"
+    output.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (output / "link").symlink_to(outside, target_is_directory=True)
+    args = argparse.Namespace(template_syntax="cookiecutter", target="link/escape.txt")
+    with pytest.raises(generator.TemplateError, match="escapes the output directory"):
+        generator._replace_filenames([file], args, output, template)
+    assert not (outside / "escape.txt").exists()
