@@ -10,6 +10,7 @@ import tempfile
 import shutil
 import datetime
 import platform
+import uuid
 from template_manager import git_wrapper as git
 from template_manager import create_gitlab_project
 from platformdirs import user_config_dir
@@ -32,6 +33,7 @@ class TemplateError(Exception):
 # Jinja block delimiters are literal when legacy syntax is explicitly selected.
 _CONTENT_PATTERN = re.compile(r"(?<![\\{])%(?!})[^%]*(?<!\\)%(?!})")
 _FILENAME_PATTERN = re.compile(r"(?<![\^{])%(?!})[^%]*(?<!\^)%(?!})")
+_UUID_PATTERN = re.compile(r"uuid\[([^\[\]\r\n]+)\]")
 _COOKIECUTTER_PATTERN = re.compile(r"{{.*?}}|{%.*?%}", re.DOTALL)
 
 
@@ -219,8 +221,20 @@ def _replace_variables(string, vars, pattern):
     return re.sub(pattern, lambda x:getattr(vars, x.group().strip('%')), string)
 
 
+def _replace_uuids(string, args, uuid_values):
+    def replace(match):
+        name = match.group(1)
+        if name not in uuid_values:
+            namespace = uuid.uuid5(uuid.NAMESPACE_URL, args.uuid_seed)
+            uuid_values[name] = str(uuid.uuid5(namespace, name))
+        return uuid_values[name]
 
-def _replace_filenames(files, vars, outdir: Path, files_basedir):        
+    return _UUID_PATTERN.sub(replace, string)
+
+
+def _replace_filenames(files, vars, outdir: Path, files_basedir, uuid_values=None):
+    if uuid_values is None:
+        uuid_values = {}
     outdir.mkdir(parents=True, exist_ok=True)
     output_root = outdir.resolve()
     for file in files:
@@ -244,6 +258,7 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
         else:
             newfile = _replace_variables(str(relfile), vars, _FILENAME_PATTERN)
             newfile = _unescape_filename(newfile)
+        newfile = _replace_uuids(newfile, vars, uuid_values)
         newfilepath = outdir / newfile        
         if Path(newfile).is_absolute():
             raise TemplateError(f"Rendered path is absolute: {relfile}")
@@ -257,7 +272,9 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
             Path(newfilepath).mkdir(parents = True, exist_ok = True) #os.path.dirname cannot figure out if dir or file if path doesn't already exist)
         
 
-def _replace_file_contents(file, vars):
+def _replace_file_contents(file, vars, uuid_values=None):
+    if uuid_values is None:
+        uuid_values = {}
     try:
         content = Path(file).read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
@@ -268,6 +285,7 @@ def _replace_file_contents(file, vars):
         newcontent = strip_ifs_and_elses(content, __builtins__["vars"](vars))
         newcontent = _replace_variables(newcontent, vars, _CONTENT_PATTERN)
         newcontent = _unescape_content(newcontent)
+    newcontent = _replace_uuids(newcontent, vars, uuid_values)
     if newcontent != content:
         Path(file).write_text(newcontent, encoding="utf-8")
 
@@ -382,6 +400,9 @@ def _build(args):
     )
     
     _add_free_vars_to_args(args)
+
+    if not getattr(args, "uuid_seed", None):
+        args.uuid_seed = str(uuid.uuid4())
     
     # Jinja checks missing variables during rendering, after selecting branches.
     if not _uses_cookiecutter(args):
@@ -390,13 +411,14 @@ def _build(args):
 
     args.output_path = _new_path_if_already_exists(args.output_path, args.project_folder)
 
-    _replace_filenames(files, args, args.output_path, args.template_path)
+    uuid_values = {}
+    _replace_filenames(files, args, args.output_path, args.template_path, uuid_values)
 
     newfiles = _list_of_files(args.output_path)
 
     for file in newfiles:
         if not Path(file).is_dir():
-            _replace_file_contents(file, args)
+            _replace_file_contents(file, args, uuid_values)
 
 
     _create_settings_file(args.output_path, args)
@@ -425,6 +447,7 @@ def _parse_command_line_arguments(argv, defaults):
     ap.add_argument("-d","--description", help="Description of the project")
     ap.add_argument("--author", help = "Name of the author of the project", default = defaults["author"])
     ap.add_argument("--email", help = "E-mail of the author of the project", default = defaults["email"])
+    ap.add_argument("--uuid-seed", help="Seed for uuid[name] placeholders. Generated randomly if omitted and saved in .template_settings.toml for recreation and updates.")
     ap.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
     syntax = ap.add_mutually_exclusive_group()
     syntax.add_argument("--cookiecutter-syntax", dest="template_syntax", action="store_const", const="cookiecutter",

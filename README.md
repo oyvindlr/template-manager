@@ -22,7 +22,7 @@ In this example, the template code inside "templates/python_project_simple_relea
 
 Output of `template-gen -h`:
 ```
-usage: Create project from template [-h] [--template TEMPLATE] [-o OUTPUT_PATH] [-d DESCRIPTION] [--author AUTHOR] [--email EMAIL] [--variables [VARIABLES ...]] [--git-commit GIT_COMMIT] [--git-folder GIT_FOLDER] [-t SETTINGS_TOML] [--edit-settings] [--list-folders] project
+usage: Create project from template [-h] [--template TEMPLATE] [-o OUTPUT_PATH] [-d DESCRIPTION] [--author AUTHOR] [--email EMAIL] [--uuid-seed UUID_SEED] [--variables [VARIABLES ...]] [--git-commit GIT_COMMIT] [--git-folder GIT_FOLDER] [-t SETTINGS_TOML] [--edit-settings] [--list-folders] project
 
 Use this program to generate a new project from a template.
 
@@ -38,6 +38,7 @@ options:
                         Description of the project
   --author AUTHOR       Name of the author of the project
   --email EMAIL         E-mail of the author of the project
+  --uuid-seed UUID_SEED  Seed for named UUIDs; generated randomly if omitted
   --variables [VARIABLES ...]
                         Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'
   --git-commit GIT_COMMIT
@@ -100,6 +101,35 @@ To create your own template, create a new folder containing all files and folder
 You can use any keywords you wish. The keywords "project", "description", "author" and "email" are given by standard command line arguments. Additional special keywords, which you do not need to specify, are "project_snake" (lowercase project with dashes and spaces replaced by underscores), "project_lc" (project lowercase), "project_kebab" (kebab-case: lowercase with spaces replaced by dashes "-"), ProjectPascal (Pascal case: all words capitalized and spaces removed), projectCamel (Camel case: All words except the first capitalized, and spaces removed), PROJECT_UPPER (all uppercase with spaces replaced by underscores)  and "date" (current date). It is recommended to use spaces in the project name, and use these special variables where spaces should be omitted. Any other keywords must be given through the "--variables" option of the command line tool, e.g 
 
 ```template-gen --variables "my_var_1:Hello world" my_var_2:somethingelse ...```
+
+#### Named UUIDs
+
+Use `uuid[name]` in file contents or file/folder names to generate a UUID:
+
+```text
+id = "uuid[main]"
+reference = "uuid[main]"
+other_id = "uuid[other]"
+```
+
+Every occurrence of the same name receives the same UUID throughout the project.
+Names are case-sensitive and must be nonempty, without brackets or newlines.
+UUIDs use UUIDv5: the namespace is `uuid5(NAMESPACE_URL, seed)`, and each value
+is `uuid5(namespace, name)`. Adding or reordering names does not change existing IDs.
+
+A random seed is generated for each new project and saved as `uuid_seed` in
+`.template_settings.toml`. Recreation with `--settings-toml` and updates with
+`template-update` reuse this seed, preserving UUIDs. Older projects without a seed
+receive one during their next update.
+
+You can supply any nonempty seed string explicitly with `--uuid-seed`:
+
+```sh
+template-gen "My project" --template ./my-template --uuid-seed "my-project-seed"
+```
+
+Using the same seed and name produces the same UUID, even in separate projects.
+Keep the saved seed and placeholder names unchanged to preserve IDs across updates.
 
 ### Converting templates to Cookiecutter
 
