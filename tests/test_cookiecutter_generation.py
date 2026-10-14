@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import sys
 
@@ -37,7 +38,7 @@ def test_cookiecutter_variables_and_paths(generate, flags):
     output = generate("{{ project }} / {{ cookiecutter.description }} / {{ greeting }}\n",
                       filename="{{ cookiecutter.project_snake }}/{{ projectCamel }}.txt",
                       flags=flags, variables=["greeting:Hei æøå"])
-    assert (output / "my_project/myProject.txt").read_text() == "My Project / A description / Hei æøå\n"
+    assert (output / "my_project/myProject.txt").read_text(encoding="utf-8") == "My Project / A description / Hei æøå\n"
     settings = toml.load(output / ".template_settings.toml")
     assert settings["template_syntax"] == ("cookiecutter" if flags else "auto")
     assert "_resolved_template_syntax" not in settings
@@ -162,8 +163,14 @@ def test_rejects_absolute_rendered_component(generate, tmp_path):
     outside = tmp_path / "outside.txt"
     outside.write_text("preserve me")
     with pytest.raises(generator.TemplateError, match="absolute"):
-        generate("must not overwrite", filename="parent/{{ target }}", variables=[f"target:{outside}"])
+        generate("must not overwrite", filename="parent/{{ target }}", variables=[f"target:'{outside}'"])
     assert outside.read_text() == "preserve me"
+
+
+def test_variables_accept_single_quoted_values_with_colons():
+    args = argparse.Namespace(variables=[r"target:'C:\templates\my:template'"])
+    generator._add_free_vars_to_args(args)
+    assert args.target == r"C:\templates\my:template"
 
 
 def test_fully_excluded_template_still_saves_settings(tmp_path):
@@ -224,8 +231,8 @@ def test_update_redetects_migrated_template(tmp_path, initial, updated):
     assert git("rev-parse", "HEAD").startswith(updated_settings["git_commit"])
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Creating symlinks may require Windows privileges")
 def test_rejects_output_symlink_escape(tmp_path):
-    import argparse
     template = tmp_path / "template"
     template.mkdir()
     file = template / "{{ target }}"

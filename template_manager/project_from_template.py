@@ -138,7 +138,7 @@ def remove_if_and_else(vars_):
             vars_.remove(var)
 
 def _find_vars_in_file(filename):
-    with open(filename) as f:
+    with open(filename, encoding="utf-8-sig") as f:
         try:
             content = f.read()
             vars_ = re.findall(_CONTENT_PATTERN, content)
@@ -184,8 +184,10 @@ def _add_free_vars_to_args(args):
         free_vars = args.variables
         del(args.variables)
         for var_ in free_vars:
-            namevalue = var_.split(":")        
-            setattr(args, namevalue[0], namevalue[1])
+            name, value = var_.split(":", maxsplit=1)
+            if len(value) >= 2 and value[0] == value[-1] == "'":
+                value = value[1:-1]
+            setattr(args, name, value)
 
 
 
