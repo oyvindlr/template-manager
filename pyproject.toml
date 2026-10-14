@@ -8,6 +8,7 @@ name = "template-manager"
 description = "A small program to generate templates by replacing key names in files and file/folder names by specific values"
 authors= [{name = "Øyvind Rørtveit", email = "oyvind.rortveit@naxystech.com"}]
 dependencies =[
+    "jinja2>=3.1",
     "toml",
     "platformdirs",
     "requests",
@@ -33,7 +34,6 @@ build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
-  "jinja2>=3.1",
   "pytest>=9.1.1",
   "pytest-cov",
   "pytest-mock",
