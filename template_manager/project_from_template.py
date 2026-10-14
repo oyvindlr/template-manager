@@ -55,6 +55,10 @@ def _render_cookiecutter(content, args):
         raise TemplateError(f"Invalid Cookiecutter template: {error}") from error
 
 
+def _uses_cookiecutter(args):
+    return getattr(args, "_resolved_template_syntax", getattr(args, "template_syntax", None)) == "cookiecutter"
+
+
 def _detect_template_syntax(files, basedir):
     """Prefer Jinja markers in relative paths or text; otherwise use legacy."""
     for file in files:
@@ -90,6 +94,7 @@ def _project_settings(args):
     d.pop("output_path", None)
     d.pop("settings_toml", None)
     d.pop("variables", None)
+    d.pop("_resolved_template_syntax", None)
     return d
 
 def _create_settings_file(project_path: Path, args):
@@ -219,7 +224,7 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir):
     for file in files:
         filepath = Path(file)
         relfile = filepath.relative_to(files_basedir)        
-        if getattr(vars, "template_syntax", None) == "cookiecutter":
+        if _uses_cookiecutter(vars):
             # An excluded directory excludes its descendants too. Stop before
             # rendering descendant names, which may refer to missing variables.
             components = []
@@ -255,7 +260,7 @@ def _replace_file_contents(file, vars):
         content = Path(file).read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
         return #Binary file, just ignore
-    if getattr(vars, "template_syntax", None) == "cookiecutter":
+    if _uses_cookiecutter(vars):
         newcontent = _render_cookiecutter(content, vars)
     else:
         newcontent = strip_ifs_and_elses(content, __builtins__["vars"](vars))
@@ -355,7 +360,7 @@ def _build(args):
     requested_syntax = getattr(args, "template_syntax", None)
     if hasattr(args, "settings_toml") and args.settings_toml:
         args = _get_arguments_from_toml(args.settings_toml, args)
-        if requested_syntax:
+        if requested_syntax in ("legacy", "cookiecutter"):
             args.template_syntax = requested_syntax
 
     _check_arguments(args)        #Raises an exception if invalid arguments
@@ -366,15 +371,18 @@ def _build(args):
 
     # Find all variables to be replaced in the template
     files = _list_of_files(args.template_path)
-    if not getattr(args, "template_syntax", None):
-        args.template_syntax = _detect_template_syntax(files, args.template_path)
-    if args.template_syntax not in ("legacy", "cookiecutter"):
+    args.template_syntax = getattr(args, "template_syntax", None) or "auto"
+    if args.template_syntax not in ("auto", "legacy", "cookiecutter"):
         raise TemplateError(f"Unknown template syntax: {args.template_syntax}")
+    args._resolved_template_syntax = (
+        _detect_template_syntax(files, args.template_path)
+        if args.template_syntax == "auto" else args.template_syntax
+    )
     
     _add_free_vars_to_args(args)
     
     # Jinja checks missing variables during rendering, after selecting branches.
-    if args.template_syntax == "legacy":
+    if not _uses_cookiecutter(args):
         required_vars = _find_required_vars(files)
         _exception_if_required_args_are_not_present(args, required_vars)
 
