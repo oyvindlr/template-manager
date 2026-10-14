@@ -63,7 +63,39 @@ You can use any keywords you wish. The keywords "project", "description", "autho
 
 ```template-gen --variables "my_var_1:Hello world" my_var_2:somethingelse ...```
 
+### Converting templates to Cookiecutter
+
+Convert a UTF-8 template file using:
+
+```bash
+template-to-cookiecutter source.txt -o converted.txt
+# Also available without the console script:
+python -m template_manager.cookiecutter source.txt -o converted.txt
+```
+
+With no input or output path, the command reads stdin or writes stdout. It converts
+`%project%` to `{{ cookiecutter.project }}` and conditional blocks to Jinja:
+`%if(enabled)%` becomes `{% if ... %}`, `%elseif(other)%` becomes `{% elif ... %}`,
+and `%else%` / `%endif%` become `{% else %}` / `{% endif %}`. Nested blocks are
+supported; unbalanced blocks raise an error. Conditions check that the variable
+exists and is neither boolean false nor a case-insensitive string `"false"`.
+
+The Python function also accepts filename strings:
+
+```python
+from template_manager.cookiecutter import convert_template
+
+convert_template("Hello %name%")  # "Hello {{ cookiecutter.name }}"
+convert_template("%name%.py", filename=True)  # "{{ cookiecutter.name }}.py"
+convert_template("%name%", namespace="")  # "{{ name }}"
+```
+
+Use `--namespace ''` for bare Jinja variables or `--filename` for filename strings.
+Escaped percent signs (`\%` in contents, `^%` in filenames) become literal percent
+signs. File conversion preserves line endings. This converts strings or individual
+files; rename template paths separately and provide the variables in your
+Cookiecutter project's `cookiecutter.json`. Derived template-manager variables
+such as `project_snake` must also be defined there.
+
 #### Important note on creating your own template:
 Since the character "%" is used for variable names, any occurences of this character that should not be replaced need to be escaped. In the file contents, it should be escaped as "\\%". Since "\\" is illegal in file names, the percent sign should be escaped as "^%" in file names (only relevant if any of your files should actually contain the percent-sign after creation). A limitation of this scheme is that you cannot have a variable immediately following a '\\' character in code or a '^' character in file names.
-
-
