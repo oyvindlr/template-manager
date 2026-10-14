@@ -65,6 +65,9 @@ templates support `{% if condition %}`, `{% elif condition %}`, `{% else %}`, an
 `{% endif %}`, including nested blocks, filters, and expressions. Variables and
 conditionals work in file contents and file/directory names. Supply values using
 the existing project arguments and `--variables KEY:VALUE`.
+If a Jinja path component renders empty, that file or directory and its descendants
+are excluded. Rendered paths must stay inside the output directory; absolute paths,
+parent traversal outside it, and escapes through existing symlinks are rejected.
 
 ```bash
 template-gen "My Project" --template ./template --cookiecutter-syntax --no-gitlab-project
