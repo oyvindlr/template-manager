@@ -79,8 +79,13 @@ The two flags are mutually exclusive. Without either flag, Jinja `{{ ... }}` or
 otherwise legacy mode is used. Binary contents are ignored during detection and
 copied unchanged. For templates containing both syntaxes, Cookiecutter takes
 precedence; use an explicit flag to keep the other syntax as literal text.
-The selected mode is stored in `.template_settings.toml` for recreation and
-updates. An explicit syntax flag overrides the stored mode.
+The syntax preference is stored in `.template_settings.toml`: `auto` when neither
+flag was supplied, or the explicitly selected mode. Automatic mode detects syntax
+again during recreation and updates, so a template can migrate between legacy and
+Cookiecutter syntax. An explicit syntax flag overrides the stored preference.
+Settings previously saved with a detected `legacy` or `cookiecutter` value cannot
+be distinguished from explicit choices; change that value to `auto` to enable
+autodetection for those projects.
 
 Cookiecutter mode uses Jinja truthiness: a missing conditional flag is false,
 while a missing variable that is actually rendered raises an error. CLI values

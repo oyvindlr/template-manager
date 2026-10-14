@@ -38,7 +38,9 @@ def test_cookiecutter_variables_and_paths(generate, flags):
                       filename="{{ cookiecutter.project_snake }}/{{ projectCamel }}.txt",
                       flags=flags, variables=["greeting:Hei æøå"])
     assert (output / "my_project/myProject.txt").read_text() == "My Project / A description / Hei æøå\n"
-    assert toml.load(output / ".template_settings.toml")["template_syntax"] == "cookiecutter"
+    settings = toml.load(output / ".template_settings.toml")
+    assert settings["template_syntax"] == ("cookiecutter" if flags else "auto")
+    assert "_resolved_template_syntax" not in settings
 
 
 def test_nested_conditionals_and_missing_inactive_variables(generate):
@@ -67,7 +69,7 @@ def test_path_only_detection(generate):
 def test_legacy_detection_and_override(generate, flags):
     output = generate("%project% %if(missing)%hidden%else%shown%endif%\n", filename="%project_snake%.txt", flags=flags)
     assert (output / "my_project.txt").read_text() == "My Project shown\n"
-    assert toml.load(output / ".template_settings.toml")["template_syntax"] == "legacy"
+    assert toml.load(output / ".template_settings.toml")["template_syntax"] == ("legacy" if flags else "auto")
 
 
 def test_explicit_legacy_preserves_jinja(generate):
@@ -175,6 +177,51 @@ def test_fully_excluded_template_still_saves_settings(tmp_path):
     ], {"default_template_repo": None, "author": None, "email": None})
     output = generator._build(args)
     assert {path.name for path in output.iterdir()} == {".template_settings.toml"}
+
+
+@pytest.mark.parametrize("initial, updated", [("legacy", "cookiecutter"), ("cookiecutter", "legacy")])
+def test_update_redetects_migrated_template(tmp_path, initial, updated):
+    from template_manager import update_template
+
+    template = tmp_path / "git-template"
+    template.mkdir()
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(template), *args], check=True, capture_output=True, text=True).stdout.strip()
+
+    git("init", "-b", "main")
+    git("config", "user.name", "Template Test")
+    git("config", "user.email", "test@example.com")
+
+    def save_template(syntax, content):
+        filename = "%project_snake%.txt" if syntax == "legacy" else "{{ cookiecutter.project_snake }}.txt"
+        (template / filename).write_text(content)
+        git("add", "-A")
+        git("commit", "-m", syntax)
+        return filename
+
+    variable = "%project%" if initial == "legacy" else "{{ cookiecutter.project }}"
+    original_file = save_template(initial, f"Name: {variable}\n")
+    args = generator._parse_command_line_arguments([
+        "My Project", "--template", str(template), "-o", str(tmp_path / "project"),
+        "--no-gitlab-project",
+    ], {"default_template_repo": None, "author": None, "email": None})
+    project = generator._build(args)
+    settings = project / ".template_settings.toml"
+    assert toml.load(settings)["template_syntax"] == "auto"
+    (project / "notes.txt").write_text("Keep my custom file\n")
+
+    (template / original_file).unlink()
+    variable = "%project%" if updated == "legacy" else "{{ cookiecutter.project }}"
+    save_template(updated, f"Name: {variable}\nUpdated template\n")
+    update_template.main(["--directory", str(project)])
+
+    assert (project / "my_project.txt").read_text() == "Name: My Project\nUpdated template\n"
+    assert (project / "notes.txt").read_text() == "Keep my custom file\n"
+    updated_settings = toml.load(settings)
+    assert updated_settings["template_syntax"] == "auto"
+    assert "_resolved_template_syntax" not in updated_settings
+    assert git("rev-parse", "HEAD").startswith(updated_settings["git_commit"])
 
 
 def test_rejects_output_symlink_escape(tmp_path):
