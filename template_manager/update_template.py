@@ -14,9 +14,11 @@ import shutil
 
 
 
-def _toml_file_with_updated_commit_hash(tomlfile, hash):
+def _toml_file_with_updated_commit_hash(tomlfile, hash, uuid_seed=None):
     d = toml.load(tomlfile)
     d["git_commit"] = str(hash)
+    if uuid_seed is not None:
+        d["uuid_seed"] = uuid_seed
     new_toml =  tempfile.NamedTemporaryFile(mode="w", delete=False, encoding = 'utf8')
     toml.dump(d, new_toml)
     new_toml.close()
@@ -84,6 +86,9 @@ def main(argv):
     print("Recreating original empty project from template...")
     project_creation_args = ["--settings-toml", str(settings_toml), "--output-path", temp_dir.name, "--no-gitlab-project"]
     proj_dir = project_from_template.main(project_creation_args)
+    # Older projects have no seed yet. Reuse the seed from the first generation
+    # for the updated template too, and persist it in the merged settings.
+    uuid_seed = toml.load(proj_dir / ".template_settings.toml")["uuid_seed"]
     
     #Overwrite new settings_toml with original, since changes in project_from_template may change it's content and cause conflicts
     os.remove(proj_dir / ".template_settings.toml")
@@ -104,7 +109,7 @@ def main(argv):
     git.checkout(proj_dir, "template")
 
     print("Updating to latest template...")
-    new_toml_file = _toml_file_with_updated_commit_hash(settings_toml, args.commit)
+    new_toml_file = _toml_file_with_updated_commit_hash(settings_toml, args.commit, uuid_seed)
     project_creation_args[1] = new_toml_file.name
     other_temp_dir = tempfile.TemporaryDirectory()    
     project_creation_args[3] = other_temp_dir.name
