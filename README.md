@@ -57,6 +57,36 @@ template-gui
 ```
 to start the GUI. 
 
+### Choosing template syntax
+
+`template-gen` supports both legacy `%project%` placeholders and Cookiecutter/Jinja
+placeholders, including `{{ project }}` and `{{ cookiecutter.project }}`. Jinja
+templates support `{% if condition %}`, `{% elif condition %}`, `{% else %}`, and
+`{% endif %}`, including nested blocks, filters, and expressions. Variables and
+conditionals work in file contents and file/directory names. Supply values using
+the existing project arguments and `--variables KEY:VALUE`.
+
+```bash
+template-gen "My Project" --template ./template --cookiecutter-syntax --no-gitlab-project
+template-gen "My Project" --template ./template --legacy-syntax --no-gitlab-project
+```
+
+The two flags are mutually exclusive. Without either flag, Jinja `{{ ... }}` or
+`{% ... %}` markers in template text or relative paths select Cookiecutter mode;
+otherwise legacy mode is used. Binary contents are ignored during detection and
+copied unchanged. For templates containing both syntaxes, Cookiecutter takes
+precedence; use an explicit flag to keep the other syntax as literal text.
+The selected mode is stored in `.template_settings.toml` for recreation and
+updates. An explicit syntax flag overrides the stored mode.
+
+Cookiecutter mode uses Jinja truthiness: a missing conditional flag is false,
+while a missing variable that is actually rendered raises an error. CLI values
+are strings, so test false-valued options explicitly, for example
+`{% if cookiecutter.enabled == 'true' %}`. Unlike legacy conditions, the nonempty
+string `"false"` is truthy in a plain Jinja `{% if enabled %}`. This mode renders
+template syntax using the existing arguments; it does not load `cookiecutter.json`
+or run Cookiecutter hooks.
+
 ### Creating your own template
 To create your own template, create a new folder containing all files and folders that a new project made from the template should contain. The names of files and folders may contain keywords such as %project%, %author% etc. These will be replaced by the variable values in the newly created project. The contents of the file may also contain such keywords which will be replaced.
 You can use any keywords you wish. The keywords "project", "description", "author" and "email" are given by standard command line arguments. Additional special keywords, which you do not need to specify, are "project_snake" (lowercase project with dashes and spaces replaced by underscores), "project_lc" (project lowercase), "project_kebab" (kebab-case: lowercase with spaces replaced by dashes "-"), ProjectPascal (Pascal case: all words capitalized and spaces removed), projectCamel (Camel case: All words except the first capitalized, and spaces removed), PROJECT_UPPER (all uppercase with spaces replaced by underscores)  and "date" (current date). It is recommended to use spaces in the project name, and use these special variables where spaces should be omitted. Any other keywords must be given through the "--variables" option of the command line tool, e.g 

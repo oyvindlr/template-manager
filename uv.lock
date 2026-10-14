@@ -506,6 +506,7 @@ wheels = [
 name = "template-manager"
 source = { editable = "." }
 dependencies = [
+    { name = "jinja2" },
     { name = "platformdirs" },
     { name = "requests" },
     { name = "toml" },
@@ -518,7 +519,6 @@ gui = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "jinja2" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
@@ -528,6 +528,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "gooey", marker = "extra == 'gui'" },
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "platformdirs" },
     { name = "requests" },
     { name = "toml" },
@@ -536,7 +537,6 @@ provides-extras = ["gui"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "jinja2", specifier = ">=3.1" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
