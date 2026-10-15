@@ -121,8 +121,7 @@ reference = "{{ uuid('main') }}"
 other_id = "{{ uuid('other') }}"
 ```
 
-Jinja requires quotes around literal names. Template-manager also accepts
-`{{ cookiecutter.uuid('main') }}` for compatibility with earlier templates.
+Jinja requires quotes around literal names.
 UUID calls follow the selected syntax's escaping and conditional rules, and
 Jinja filters work normally. Bare `uuid(name)` and `uuid[name]` remain literal.
 Escape legacy placeholders as `\%uuid(name)\%` in contents or

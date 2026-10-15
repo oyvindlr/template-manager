@@ -63,7 +63,7 @@ def _render_cookiecutter(content, args, uuid_values=None):
 
     context = vars(args).copy()
     context["cookiecutter"] = vars(args).copy()
-    context["uuid"] = context["cookiecutter"]["uuid"] = named_uuid
+    context["uuid"] = named_uuid
     try:
         return _JINJA_ENVIRONMENT.from_string(content).render(context)
     except JinjaTemplateError as error:
