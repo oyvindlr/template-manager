@@ -447,17 +447,17 @@ def _parse_command_line_arguments(argv, defaults):
     ap.add_argument("-d","--description", help="Description of the project")
     ap.add_argument("--author", help = "Name of the author of the project", default = defaults["author"])
     ap.add_argument("--email", help = "E-mail of the author of the project", default = defaults["email"])
-    ap.add_argument("--uuid-seed", help="Seed for uuid[name] placeholders. Generated randomly if omitted and saved in .template_settings.toml for recreation and updates.")
     ap.add_argument("--variables", type=str, nargs="*", help="Other variables used for replacing values in the template. List in the form 'KEYWORD1:VALUE1 KEYWORD2:VALUE2 keyWord3:Value3'")
-    syntax = ap.add_mutually_exclusive_group()
-    syntax.add_argument("--cookiecutter-syntax", dest="template_syntax", action="store_const", const="cookiecutter",
-                        help="Render {{ variables }} and {%% if ... %%} blocks using Jinja")
-    syntax.add_argument("--legacy-syntax", dest="template_syntax", action="store_const", const="legacy",
-                        help="Render %%variables%% and %%if(...)%% blocks (default: autodetect syntax)")
     ap.add_argument("--git-commit", help="Commit hash, tag or branch. Defaults to the main branch.")
     ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'", **folder_choices)  
     ap.add_argument("--gitlab-group", help="The group in GitLab to place the project under. If given, a gitlab project will be created in that group.", type=str, default=None)    
     if not running_in_gui:        
+        ap.add_argument("--uuid-seed", help="Seed for uuid[name] placeholders. Generated randomly if omitted and saved in .template_settings.toml for recreation and updates.")
+        syntax = ap.add_mutually_exclusive_group()
+        syntax.add_argument("--cookiecutter-syntax", dest="template_syntax", action="store_const", const="cookiecutter",
+                            help="Render {{ variables }} and {%% if ... %%} blocks using Jinja")
+        syntax.add_argument("--legacy-syntax", dest="template_syntax", action="store_const", const="legacy",
+                            help="Render %%variables%% and %%if(...)%% blocks (default: autodetect syntax)")
         ap.add_argument("-t","--settings-toml", type=Path, help = "Path to .template-settings.toml file to use as settings for the project", **filechooser)
         ap.add_argument("--edit-settings", help= "Edit settings such as default template repo and author details", action='store_true')
         ap.add_argument("--list-folders", help="Output a list of folders in the root of the git repository", action='store_true')
