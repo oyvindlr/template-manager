@@ -11,7 +11,9 @@ def convert_template(content: str, *, namespace: str = "cookiecutter", filename:
 
     Set namespace="" for bare Jinja variables. Filename mode recognizes ^%
     escapes instead of \\% escapes. Missing variables and boolean/string false
-    values disable conditional branches; other values enable them.
+    values disable conditional branches; other values enable them. Named UUIDs
+    become global uuid(name) calls regardless of namespace. Template-manager
+    provides this helper; standalone Cookiecutter needs a Jinja extension.
     """
     if namespace and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", namespace):
         raise ValueError("namespace must be a Jinja identifier or an empty string")
@@ -57,6 +59,11 @@ def convert_template(content: str, *, namespace: str = "cookiecutter", filename:
                 raise ValueError("%endif% without matching %if%")
             stack.pop()
             return "{% endif %}"
+        uuid_match = re.fullmatch(r"uuid\(([^()%\r\n]+)\)", token)
+        if uuid_match:
+            # Single quotes keep converted UUID paths valid on Windows too.
+            name = json.dumps(uuid_match.group(1), ensure_ascii=False)[1:-1].replace("'", "\\'")
+            return "{{ uuid('" + name + "') }}"
         return "{{ " + reference(token) + " }}"
 
     result = pattern.sub(replace, content)

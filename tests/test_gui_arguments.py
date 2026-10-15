@@ -42,7 +42,8 @@ def test_gui_omits_advanced_arguments(gui_parser, capsys):
 def test_gui_build_autodetects_syntax_and_saves_random_seed(gui_parser, tmp_path, syntax, variable):
     template = tmp_path / "template"
     template.mkdir()
-    (template / "result.txt").write_text(f"{variable} uuid[item] uuid[item]")
+    placeholder = "%uuid(item)%" if syntax == "legacy" else "{{ uuid('item') }}"
+    (template / "result.txt").write_text(f"{variable} {placeholder} {placeholder}")
     args = generator._parse_command_line_arguments([
         "Project", "--template", str(template), "-o", str(tmp_path / "output"),
     ], DEFAULTS)

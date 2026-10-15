@@ -104,16 +104,42 @@ You can use any keywords you wish. The keywords "project", "description", "autho
 
 #### Named UUIDs
 
-Use `uuid[name]` in file contents or file/folder names to generate a UUID:
+Use `%uuid(name)%` in legacy templates, or `{{ uuid('name') }}`
+in Jinja templates rendered by template-manager, in file contents or file/folder names:
 
 ```text
-id = "uuid[main]"
-reference = "uuid[main]"
-other_id = "uuid[other]"
+id = "%uuid(main)%"
+reference = "%uuid(main)%"
+other_id = "%uuid(other)%"
 ```
 
+The equivalent Jinja template is:
+
+```jinja
+id = "{{ uuid('main') }}"
+reference = "{{ uuid('main') }}"
+other_id = "{{ uuid('other') }}"
+```
+
+Jinja requires quotes around literal names.
+UUID calls follow the selected syntax's escaping and conditional rules, and
+Jinja filters work normally. Bare `uuid(name)` and `uuid[name]` remain literal.
+Escape legacy placeholders as `\%uuid(name)\%` in contents or
+`^%uuid(name)^%` in paths. Use Jinja raw blocks for literal Cookiecutter examples.
+`template-to-cookiecutter` converts `%uuid(name)%` to the corresponding Jinja call.
+
+Template-manager provides the `uuid` helper automatically. Standalone Cookiecutter
+does not provide this named UUID helper: rendering these calls there requires a
+[custom Jinja extension](https://cookiecutter.readthedocs.io/en/stable/advanced/template_extensions.html)
+that registers a global function named `uuid`. Such an extension can implement
+the seed-and-name algorithm below without modifying Cookiecutter itself. It would
+need to reuse a persisted project seed to preserve IDs across regeneration.
+No such extension is bundled here; Cookiecutter's built-in `uuid4()` generates
+random IDs and is not a replacement for this helper.
+
 Every occurrence of the same name receives the same UUID throughout the project.
-Names are case-sensitive and must be nonempty, without brackets or newlines.
+Names are case-sensitive and must be nonempty strings without parentheses,
+percent signs or newlines. No command line variable is needed for UUID names.
 UUIDs use UUIDv5: the namespace is `uuid5(NAMESPACE_URL, seed)`, and each value
 is `uuid5(namespace, name)`. Adding or reordering names does not change existing IDs.
 
@@ -150,6 +176,10 @@ be a filename for file input or a folder for folder input. The command converts
 and `%else%` / `%endif%` become `{% else %}` / `{% endif %}`. Nested blocks are
 supported; unbalanced blocks raise an error. Conditions check that the variable
 exists and is neither boolean false nor a case-insensitive string `"false"`.
+Named UUIDs become `{{ uuid('name') }}` calls regardless of `--namespace`.
+This converter changes syntax for rendering with template-manager; it does not
+generate a complete standalone Cookiecutter project or install extensions.
+Standalone Cookiecutter use of named UUIDs requires the extension described above.
 
 The Python function also accepts filename strings:
 
@@ -163,9 +193,8 @@ convert_template("%name%", namespace="")  # "{{ name }}"
 
 Use `--namespace ''` for bare Jinja variables or `--filename` for filename strings.
 Escaped percent signs (`\%` in contents, `^%` in filenames) become literal percent
-signs. File conversion preserves line endings. This converts strings or individual
-files; rename template paths separately and provide the variables in your
-Cookiecutter project's `cookiecutter.json`. Derived template-manager variables
+signs. File conversion preserves line endings. For standalone Cookiecutter use,
+provide the variables in your project's `cookiecutter.json`. Derived template-manager variables
 such as `project_snake` must also be defined there.
 
 #### Important note on creating your own template:
