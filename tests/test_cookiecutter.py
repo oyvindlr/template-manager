@@ -20,6 +20,18 @@ def test_placeholders_and_escaping():
     assert render('%quote"key%', {'quote"key': 'example'}) == "example"
 
 
+@pytest.mark.parametrize("namespace", ["cookiecutter", "", "custom"])
+def test_named_uuid_conversion_uses_a_jinja_global(namespace):
+    converted = convert_template("%project% %uuid(main)%", namespace=namespace)
+    assert "{{ uuid('main') }}" in converted
+    context = {namespace: {"project": "example"}} if namespace else {"project": "example"}
+    # A standalone renderer can supply the helper as a global, without placing
+    # Python callables inside Cookiecutter's JSON-backed data namespace.
+    environment = Environment(undefined=StrictUndefined)
+    environment.globals["uuid"] = lambda name: "id-for-" + name
+    assert environment.from_string(converted).render(context) == "example id-for-main"
+
+
 @pytest.mark.parametrize("value, expected", [
     ("true", "yes"), ("yes", "yes"), ("false", "no"),
     ("FaLsE", "no"), (False, "no"), (True, "yes"), ("", "yes"),

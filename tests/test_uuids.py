@@ -130,7 +130,7 @@ def test_jinja_rejects_invalid_uuid_names(tmp_path, capsys, argument):
 def test_conversion_preserves_uuid_names_and_values(tmp_path):
     source = '%uuid(main)% %uuid(quote"name)% %uuid(æøå)%'
     converted = convert_template(source)
-    assert convert_template("%uuid(main)%") == "{{ cookiecutter.uuid('main') }}"
+    assert convert_template("%uuid(main)%") == "{{ uuid('main') }}"
     assert convert_template("%uuid(main)%", namespace="") == "{{ uuid('main') }}"
     template = tmp_path / "template"
     template.mkdir()
