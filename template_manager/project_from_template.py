@@ -33,7 +33,7 @@ class TemplateError(Exception):
 # Jinja block delimiters are literal when legacy syntax is explicitly selected.
 _CONTENT_PATTERN = re.compile(r"(?<![\\{])%(?!})[^%]*(?<!\\)%(?!})")
 _FILENAME_PATTERN = re.compile(r"(?<![\^{])%(?!})[^%]*(?<!\^)%(?!})")
-_UUID_PATTERN = re.compile(r"uuid\[([^\[\]\r\n]+)\]")
+_UUID_PATTERN = re.compile(r"uuid\(([^()%\r\n]+)\)")
 _COOKIECUTTER_PATTERN = re.compile(r"{{.*?}}|{%.*?%}", re.DOTALL)
 
 
@@ -48,9 +48,14 @@ _JINJA_ENVIRONMENT = SandboxedEnvironment(
 )
 
 
-def _render_cookiecutter(content, args):
+def _render_cookiecutter(content, args, uuid_values=None):
+    if uuid_values is None:
+        uuid_values = {}
     context = vars(args).copy()
     context["cookiecutter"] = vars(args).copy()
+    context["uuid"] = context["cookiecutter"]["uuid"] = (
+        lambda name: _named_uuid(name, args, uuid_values)
+    )
     try:
         return _JINJA_ENVIRONMENT.from_string(content).render(context)
     except JinjaTemplateError as error:
@@ -157,7 +162,7 @@ def _find_required_vars(files):
         if not file.is_dir():
             file_vars = _find_vars_in_file(file)
             all_vars = all_vars.union(file_vars)
-    return all_vars
+    return {name for name in all_vars if not _UUID_PATTERN.fullmatch(name)}
 
 def _list_of_files(dir):
     """
@@ -217,19 +222,26 @@ def _exception_if_required_args_are_not_present(args, required_vars):
         if not hasattr(args, varname) or not getattr(args, varname):
             raise TemplateError(f'The variable "{varname}" is necessary for this template, but is not defined in the command line arguments')
 
-def _replace_variables(string, vars, pattern):
-    return re.sub(pattern, lambda x:getattr(vars, x.group().strip('%')), string)
-
-
-def _replace_uuids(string, args, uuid_values):
+def _replace_variables(string, vars, pattern, uuid_values=None):
+    if uuid_values is None:
+        uuid_values = {}
     def replace(match):
-        name = match.group(1)
-        if name not in uuid_values:
-            namespace = uuid.uuid5(uuid.NAMESPACE_URL, args.uuid_seed)
-            uuid_values[name] = str(uuid.uuid5(namespace, name))
-        return uuid_values[name]
+        name = match.group()[1:-1]
+        uuid_match = _UUID_PATTERN.fullmatch(name)
+        if uuid_match:
+            return _named_uuid(uuid_match.group(1), vars, uuid_values)
+        return getattr(vars, name)
 
-    return _UUID_PATTERN.sub(replace, string)
+    return re.sub(pattern, replace, string)
+
+
+def _named_uuid(name, args, uuid_values):
+    if not isinstance(name, str) or not re.fullmatch(r"[^()%\r\n]+", name):
+        raise TemplateError("UUID names must be nonempty strings without parentheses, percent signs or newlines")
+    if name not in uuid_values:
+        namespace = uuid.uuid5(uuid.NAMESPACE_URL, args.uuid_seed)
+        uuid_values[name] = str(uuid.uuid5(namespace, name))
+    return uuid_values[name]
 
 
 def _replace_filenames(files, vars, outdir: Path, files_basedir, uuid_values=None):
@@ -245,7 +257,7 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir, uuid_values=Non
             # rendering descendant names, which may refer to missing variables.
             components = []
             for component in relfile.parts:
-                rendered = _render_cookiecutter(component, vars)
+                rendered = _render_cookiecutter(component, vars, uuid_values)
                 if not rendered:
                     break
                 if Path(rendered).is_absolute():
@@ -256,9 +268,8 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir, uuid_values=Non
             if len(components) != len(relfile.parts):
                 continue
         else:
-            newfile = _replace_variables(str(relfile), vars, _FILENAME_PATTERN)
+            newfile = _replace_variables(str(relfile), vars, _FILENAME_PATTERN, uuid_values)
             newfile = _unescape_filename(newfile)
-        newfile = _replace_uuids(newfile, vars, uuid_values)
         newfilepath = outdir / newfile        
         if Path(newfile).is_absolute():
             raise TemplateError(f"Rendered path is absolute: {relfile}")
@@ -280,12 +291,11 @@ def _replace_file_contents(file, vars, uuid_values=None):
     except UnicodeDecodeError:
         return #Binary file, just ignore
     if _uses_cookiecutter(vars):
-        newcontent = _render_cookiecutter(content, vars)
+        newcontent = _render_cookiecutter(content, vars, uuid_values)
     else:
         newcontent = strip_ifs_and_elses(content, __builtins__["vars"](vars))
-        newcontent = _replace_variables(newcontent, vars, _CONTENT_PATTERN)
+        newcontent = _replace_variables(newcontent, vars, _CONTENT_PATTERN, uuid_values)
         newcontent = _unescape_content(newcontent)
-    newcontent = _replace_uuids(newcontent, vars, uuid_values)
     if newcontent != content:
         Path(file).write_text(newcontent, encoding="utf-8")
 
@@ -452,7 +462,7 @@ def _parse_command_line_arguments(argv, defaults):
     ap.add_argument("--git-folder", help="Folder under the git repo where the template is located. Default is '.'", **folder_choices)  
     ap.add_argument("--gitlab-group", help="The group in GitLab to place the project under. If given, a gitlab project will be created in that group.", type=str, default=None)    
     if not running_in_gui:        
-        ap.add_argument("--uuid-seed", help="Seed for uuid[name] placeholders. Generated randomly if omitted and saved in .template_settings.toml for recreation and updates.")
+        ap.add_argument("--uuid-seed", help="Seed for named UUID placeholders. Generated randomly if omitted and saved in .template_settings.toml for recreation and updates.")
         syntax = ap.add_mutually_exclusive_group()
         syntax.add_argument("--cookiecutter-syntax", dest="template_syntax", action="store_const", const="cookiecutter",
                             help="Render {{ variables }} and {%% if ... %%} blocks using Jinja")

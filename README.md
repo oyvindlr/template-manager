@@ -104,16 +104,33 @@ You can use any keywords you wish. The keywords "project", "description", "autho
 
 #### Named UUIDs
 
-Use `uuid[name]` in file contents or file/folder names to generate a UUID:
+Use `%uuid(name)%` in legacy templates, or `{{ cookiecutter.uuid('name') }}`
+in Cookiecutter templates, in file contents or file/folder names:
 
 ```text
-id = "uuid[main]"
-reference = "uuid[main]"
-other_id = "uuid[other]"
+id = "%uuid(main)%"
+reference = "%uuid(main)%"
+other_id = "%uuid(other)%"
 ```
 
+The equivalent Cookiecutter template is:
+
+```jinja
+id = "{{ cookiecutter.uuid('main') }}"
+reference = "{{ cookiecutter.uuid('main') }}"
+other_id = "{{ cookiecutter.uuid('other') }}"
+```
+
+Jinja requires quotes around literal names; `{{ uuid('main') }}` also works.
+UUID calls follow the selected syntax's escaping and conditional rules, and
+Jinja filters work normally. Bare `uuid(name)` and `uuid[name]` remain literal.
+Escape legacy placeholders as `\%uuid(name)\%` in contents or
+`^%uuid(name)^%` in paths. Use Jinja raw blocks for literal Cookiecutter examples.
+`template-to-cookiecutter` converts `%uuid(name)%` to the corresponding Jinja call.
+
 Every occurrence of the same name receives the same UUID throughout the project.
-Names are case-sensitive and must be nonempty, without brackets or newlines.
+Names are case-sensitive and must be nonempty strings without parentheses,
+percent signs or newlines. No command line variable is needed for UUID names.
 UUIDs use UUIDv5: the namespace is `uuid5(NAMESPACE_URL, seed)`, and each value
 is `uuid5(namespace, name)`. Adding or reordering names does not change existing IDs.
 

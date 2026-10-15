@@ -57,6 +57,12 @@ def convert_template(content: str, *, namespace: str = "cookiecutter", filename:
                 raise ValueError("%endif% without matching %if%")
             stack.pop()
             return "{% endif %}"
+        uuid_match = re.fullmatch(r"uuid\(([^()%\r\n]+)\)", token)
+        if uuid_match:
+            function = f"{namespace}.uuid" if namespace else "uuid"
+            # Single quotes keep converted UUID paths valid on Windows too.
+            name = json.dumps(uuid_match.group(1), ensure_ascii=False)[1:-1].replace("'", "\\'")
+            return "{{ " + function + "('" + name + "') }}"
         return "{{ " + reference(token) + " }}"
 
     result = pattern.sub(replace, content)
