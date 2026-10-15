@@ -51,11 +51,19 @@ _JINJA_ENVIRONMENT = SandboxedEnvironment(
 def _render_cookiecutter(content, args, uuid_values=None):
     if uuid_values is None:
         uuid_values = {}
+
+    def named_uuid(*positional, **keywords):
+        if len(positional) == 1 and not keywords:
+            name = positional[0]
+        elif not positional and set(keywords) == {"name"}:
+            name = keywords["name"]
+        else:
+            raise TemplateError("uuid() requires exactly one name argument (positional or name=)")
+        return _named_uuid(name, args, uuid_values)
+
     context = vars(args).copy()
     context["cookiecutter"] = vars(args).copy()
-    context["uuid"] = context["cookiecutter"]["uuid"] = (
-        lambda name: _named_uuid(name, args, uuid_values)
-    )
+    context["uuid"] = context["cookiecutter"]["uuid"] = named_uuid
     try:
         return _JINJA_ENVIRONMENT.from_string(content).render(context)
     except JinjaTemplateError as error:

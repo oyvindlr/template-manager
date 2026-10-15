@@ -127,6 +127,40 @@ def test_jinja_rejects_invalid_uuid_names(tmp_path, capsys, argument):
     assert "UUID names must be nonempty strings" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("function", ["uuid", "cookiecutter.uuid"])
+@pytest.mark.parametrize("location", ["content", "path"])
+@pytest.mark.parametrize("arguments", [
+    "", "'a', 'b'", "unexpected='a'", "'a', name='b'", "name='a', extra='b'",
+])
+def test_jinja_rejects_invalid_uuid_arguments(tmp_path, capsys, function, location, arguments):
+    template = tmp_path / "template"
+    template.mkdir()
+    call = "{{ " + function + "(" + arguments + ") }}"
+    filename = call + ".txt" if location == "path" else "result.txt"
+    (template / filename).write_text(call if location == "content" else "contents")
+
+    with pytest.raises(SystemExit) as error:
+        generate(template, tmp_path / "output")
+
+    assert error.value.code == 1
+    captured = capsys.readouterr()
+    assert "uuid() requires exactly one name argument" in captured.out
+    assert "Traceback" not in captured.out + captured.err
+
+
+@pytest.mark.parametrize("function", ["uuid", "cookiecutter.uuid"])
+def test_jinja_uuid_accepts_name_keyword(tmp_path, function):
+    template = tmp_path / "template"
+    template.mkdir()
+    (template / "result.txt").write_text(
+        "{{ " + function + "('item') }} {{ " + function + "(name='item') }}"
+    )
+    output = generate(template, tmp_path / "output")
+    positional, keyword = (output / "result.txt").read_text().split()
+    assert uuid.UUID(positional).version == 5
+    assert keyword == positional
+
+
 def test_conversion_preserves_uuid_names_and_values(tmp_path):
     source = '%uuid(main)% %uuid(quote"name)% %uuid(æøå)%'
     converted = convert_template(source)
