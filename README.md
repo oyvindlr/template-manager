@@ -157,6 +157,104 @@ template-gen "My project" --template ./my-template --uuid-seed "my-project-seed"
 Using the same seed and name produces the same UUID, even in separate projects.
 Keep the saved seed and placeholder names unchanged to preserve IDs across updates.
 
+### Reverse sync: reviewing project improvements for the template
+
+`template-reverse-sync` extracts a small review bundle from committed project
+changes. It stores the last reviewed project commit in the custom Git ref
+`refs/template-manager/reverse-sync/reviewed`, without adding a file or commit to
+the project. Extraction never advances this checkpoint.
+
+Initialize the checkpoint once, choosing the project commit from which review
+should begin (for example, its initial generated commit):
+
+```sh
+template-reverse-sync mark-reviewed <starting-project-commit>
+git push --force-with-lease=refs/template-manager/reverse-sync/reviewed: origin refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
+```
+
+The empty lease requires the remote ref not to exist yet. All checkpoint commands
+update the local ref only; publishing it is an explicit Git operation. Custom refs
+are not fetched by an ordinary clone, so subsequent local or CI runs must fetch it:
+
+```sh
+git fetch origin +refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
+template-reverse-sync extract --until HEAD -o reverse-sync-output
+# Also available without installing the console entry point:
+python -m template_manager.reverse_sync extract
+```
+
+The output contains `changes.diff` and `manifest.json`. The manifest records full
+start/end commit hashes, included and excluded paths, and selection reasons. The
+diff contains the net changes between those commits, so reverted changes disappear.
+Uncommitted and untracked files are ignored. Both renames and deletions are included;
+binary files are represented by Git's binary-change notice rather than embedded
+contents. Empty output is successful and leaves the checkpoint unchanged.
+
+Candidates are files present in the rendered template at either endpoint, common
+infrastructure filenames/directories, and `.toml`, `.ini`, `.yaml`, `.yml`, `.json`,
+`.xml`, or `.cfg` files. Other changes are listed as `no-rule-matched`; this is a
+heuristic, not proof of irrelevance. Optional repeated `--include` and `--exclude`
+arguments match repository-relative paths using case-sensitive shell-style globs
+(where `*` can match `/`). Exclusions take priority, including for template paths.
+For a rename, either path can cause inclusion or exclusion.
+
+```sh
+template-reverse-sync extract --include 'scripts/*' --exclude 'fixtures/*'
+template-reverse-sync extract --since <explicit-start> --until <target-commit>
+```
+
+Global options `-d/--directory` and `--checkpoint-ref` go before the subcommand.
+Run from the project repository root. `.template_settings.toml` is read from both
+committed endpoints, and its referenced template revision must be available. The
+existing renderer reconstructs the template paths in temporary directories, using
+the installed template-manager version and saved date/UUID seed. Relative local
+template locations are resolved against the project root. Templates with unsaved
+local changes are rejected. Historical projects missing a date or UUID seed use
+fixed fallback values; review the manifest warning about paths containing those
+values. If template settings changed, both rendered path sets are considered, but
+imported template updates are not subtracted from the diff in this initial version.
+
+After reviewing the entire bundle, advance to the **exact `until` SHA in its
+manifest**, even if HEAD has since moved. The old SHA in the lease is the bundle's
+`since` value. This prevents overwriting a checkpoint advanced by another reviewer:
+
+```sh
+template-reverse-sync mark-reviewed <reviewed-until-sha>
+git push --force-with-lease=refs/template-manager/reverse-sync/reviewed:<bundle-since-sha> origin refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
+```
+
+Only advance when every change in the range has been dealt with, including rejected
+candidates; leave the checkpoint alone if work is deferred. Backward or divergent
+local checkpoint moves are rejected. A missing ref or unavailable history fails with
+an actionable error instead of silently choosing a starting point.
+
+For GitLab CI, a minimal opt-in job in a generated project looks like this. It needs
+template-manager installed, read access to the pinned template repository, and enough
+project history. Adapt installation to your package registry or CI image:
+
+```yaml
+reverse-sync:
+  stage: test
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+  script:
+    - pip install template-manager
+    - git fetch origin +refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
+    - template-reverse-sync extract --until "$CI_COMMIT_SHA" -o reverse-sync-output
+  artifacts:
+    paths:
+      - reverse-sync-output/
+    expire_in: 30 days
+```
+
+Review and checkpoint advancement happen separately from this read-only job. An
+expired artifact can be regenerated using the same endpoint SHAs. No remote refs
+are pushed automatically, and no CI write credential is needed for extraction.
+
 ### Converting templates to Cookiecutter
 
 Convert a UTF-8 template file or folder using:

@@ -102,7 +102,14 @@ def _project_settings(args):
     d = vars(args)
     d = {key: str(_paths_to_posix(val)) for key, val in d.items()}
     #d = {key: str(val) for key, val in d.items()}
-    d["template"] = d["git_repo"] if "git_repo" in d and d["git_repo"] else d["template_path"]
+    if "git_repo" in d and d["git_repo"]:
+        d["template"] = d["git_repo"]
+    else:
+        # The settings file lives inside the generated project, so retaining a
+        # path relative to the invocation directory makes it impossible to
+        # recreate the project from that file.  Persist the resolved source
+        # path instead.
+        d["template"] = Path(d["template_path"]).resolve().as_posix()
     d.pop("git_repo", None)
     d.pop("template_path", None)
     d.pop("tempdir", None)
@@ -394,7 +401,7 @@ def _edit_settings():
         print(f"Error: Unknown platform {platform.system()}")
 
 
-def _build(args):
+def _build(args, *, render_date=None):
     requested_syntax = getattr(args, "template_syntax", None)
     if hasattr(args, "settings_toml") and args.settings_toml:
         args = _get_arguments_from_toml(args.settings_toml, args)
@@ -404,6 +411,8 @@ def _build(args):
     _check_arguments(args)        #Raises an exception if invalid arguments
 
     _add_special_variables(args)
+    if render_date is not None:
+        args.date = render_date
 
     _find_template_source(args)
 
