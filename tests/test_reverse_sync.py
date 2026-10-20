@@ -89,6 +89,21 @@ def test_missing_checkpoint_and_explicit_since(project):
     assert sync.extract(repo, since=base)[0] == b""
 
 
+def test_legacy_relative_template_path_resolves_from_project_parent(project):
+    repo, base = project
+    settings = toml.loads((repo / sync.SETTINGS).read_text())
+    settings["template"] = Path(settings["template"]).relative_to(repo.parent).as_posix()
+    (repo / sync.SETTINGS).write_text(toml.dumps(settings))
+    base = commit(repo)
+
+    (repo / "demo.py").write_text("changed\n")
+    commit(repo)
+
+    _, manifest = sync.extract(repo, since=base)
+    demo = next(file for file in manifest["files"] if file["paths"] == ["demo.py"])
+    assert demo["reasons"] == ["template-path"]
+
+
 def test_renames_globs_and_unusual_filenames(project):
     repo, base = project
     git(repo, "mv", "demo.py", "renamed.py")

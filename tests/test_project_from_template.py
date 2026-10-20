@@ -218,6 +218,17 @@ def test_new_project_contains_toml_file(tmp_path, defaultargs, another_template_
     assert tomlfile["template"] == Path(defaultargs.template).as_posix()
 
 
+def test_relative_local_template_is_saved_as_absolute(
+        tmp_path, defaultargs, another_template_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    defaultargs.template = os.path.relpath(another_template_path, tmp_path)
+
+    project_from_template._build(defaultargs)
+
+    settings = toml.load(tmp_path / defaultargs.project / ".template_settings.toml")
+    assert settings["template"] == Path(another_template_path).resolve().as_posix()
+
+
 def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_path):
     
     defaultargs.template = git_test_repo_path

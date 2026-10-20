@@ -70,6 +70,14 @@ def _template_paths(repo, settings_text):
     settings = toml.loads(settings_text)
     source = settings.get("template", "")
     local = repo / source
+    # Older settings retained relative paths as entered from the directory in
+    # which generation ran.  Projects are normally generated as a sibling of
+    # their template, so support that layout while new settings store an
+    # absolute source path.
+    if source and not Path(source).is_absolute() and not local.exists():
+        sibling = repo.parent / source
+        if sibling.exists():
+            local = sibling
     if local.exists():
         settings["template"] = str(local.resolve())
         if not _git_is_repo(local):
