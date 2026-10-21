@@ -1,6 +1,6 @@
 ---
 name: reverse-sync-review
-description: Run template-manager reverse_sync to review committed project changes, classify project-specific versus reusable improvements, propose existing or new template parameters, produce and test a template patch, and open a pull request. Use when promoting improvements from a generated project back into its source template or reviewing changes since a reverse-sync checkpoint.
+description: Use template-manager's template-reverse-sync command to review committed project changes, classify project-specific versus reusable improvements, propose existing or new template parameters, produce and test a template patch, and open a pull request. Use when promoting improvements from a generated project back into its source template or reviewing changes since a reverse-sync checkpoint.
 ---
 
 # Reverse sync review
@@ -9,7 +9,11 @@ Promote reusable project improvements into their source template with the smalle
 
 ## 1. Establish inputs and preserve work
 
-- Read applicable repository instructions and the installed tool's help. Inspect `template_manager/reverse_sync.py` and generation documentation when behavior differs from this workflow. Use the project's supported template-manager version; report that version.
+This skill runs from a **generated project**, with access to its **source template repository**. Neither is the **template-manager package's source repository**, and a checkout of template-manager is not required. The Python package `template-manager` provides `template-reverse-sync` for extraction/checkpoints and `template-gen` for rendering test projects. Git and a template-manager version supporting reverse sync must be available in the active environment.
+
+- Read applicable instructions in the generated project and source template repositories. Use the project's supported template-manager environment/version, resolving it from dependency declarations, lockfiles, or CI setup where possible; report the installed version with `python -c "from importlib.metadata import version; print(version('template-manager'))"` using that environment's Python interpreter.
+- Check `template-reverse-sync --help`, `template-reverse-sync extract --help`, `template-reverse-sync mark-reviewed --help`, and `template-gen --help` in that environment before following the examples. If only the reverse-sync console entry point is missing, use `python -m template_manager.reverse_sync` with the same arguments. If the package or reverse-sync module is unavailable, report the missing prerequisite and resolve the supported installation/version before proceeding; do not silently install the latest release or implement a substitute extractor.
+- If behavior differs from this workflow, consult documentation for the installed template-manager version and, when needed, its installed implementation. `template_manager/reverse_sync.py` is a path inside that package, not inside the generated project or template repository; locate it with `python -c "import template_manager.reverse_sync as m; print(m.__file__)"`. Generation is implemented in `template_manager.project_from_template` and can be located the same way. Do not assume a template-manager source checkout or its README is present.
 - Identify the generated project repository, its review branch/target commit, `.template_settings.toml`, source template repository/subdirectory, pinned template revision, and intended template PR base branch. Ask only for information that cannot be resolved from configuration and history.
 - Inspect Git status in both repositories. Preserve existing work. Use separate worktrees or temporary directories for template edits and generated test projects. Do not reset, clean, stash, commit, or upload unrelated user work.
 - Review committed changes only. Report relevant uncommitted/untracked work as outside the review; do not silently commit it or claim it was reviewed.
@@ -28,14 +32,14 @@ A supplied baseline commit is permission to use it for extraction, not permissio
 
 ## 3. Extract and inspect the entire range
 
-Run from the project repository root. Prefer the installed console command; use `python -m template_manager.reverse_sync` if its entry point is unavailable. Global `--directory` and `--checkpoint-ref` options precede the subcommand.
+Run from the generated project repository root in the template-manager environment identified in step 1. In the shell examples, set `PROJECT` to that repository's absolute path and `REF`, `SINCE`, and `UNTIL` to the values resolved above. Set `BUNDLE` to a fresh absolute output-directory path outside both repositories. These are shell variables to assign before running the commands, not settings keys. Prefer `template-reverse-sync`; substitute `python -m template_manager.reverse_sync` if its console entry point is unavailable. Global `--directory` and `--checkpoint-ref` options precede the subcommand.
 
 ```sh
 template-reverse-sync --directory "$PROJECT" --checkpoint-ref "$REF" extract \
   --since "$SINCE" --until "$UNTIL" -o "$BUNDLE"
 ```
 
-Set `BUNDLE` to a fresh directory outside the reviewed source tree. Read `manifest.json`, `changes.diff`, and all manifest warnings. Verify that the manifest's full `since` and `until` SHAs equal the selected endpoints. Retain these exact SHAs for the report and checkpoint decision.
+Read `manifest.json`, `changes.diff`, and all manifest warnings. Verify that the manifest's full `since` and `until` SHAs equal the selected endpoints. Retain these exact SHAs for the report and checkpoint decision.
 
 - Treat inclusion rules as candidate selection, not classification. Inspect the changed-path inventory for the entire range, including every excluded or `no-rule-matched` entry. Read excluded diffs when needed; re-extract with explicit `--include` patterns if useful. Explicit exclusions take precedence.
 - Handle additions, deletions, renames, executable modes, and binary changes. Binary notices do not contain the changed data: inspect endpoint blobs separately when relevant, or mark the item deferred.
@@ -77,6 +81,8 @@ For every accepted change:
 
 Test the actual patched source, not the old revision pinned in the project's saved settings.
 
+Use `template-gen` from the environment identified in step 1 for generation; confirm its settings and output options with `template-gen --help`.
+
 1. Render the base and patched template into fresh isolated output directories using the source project's parameters. Make temporary settings copies that explicitly point to the intended local source/revision and template subdirectory. Saved settings can override CLI arguments; verify the effective template revision, parameters, syntax, date, and UUID seed. Never edit the real project's settings for this test.
 2. Disable remote project creation during generation (`--no-gitlab-project` with the current CLI). Control date/UUID seed for meaningful comparisons. Inspect generation behavior before assuming an uncommitted template worktree will be used.
 3. Compare base versus patched output. Confirm accepted improvements render correctly, original project values are reproduced where intended, and excluded application changes have not leaked in. Explain expected differences rather than comparing the whole generated tree blindly with an evolved application.
@@ -99,13 +105,13 @@ After finishing the review, including a no-change review, explicitly ask whether
 
 - Advance only when every change in the range has a recorded disposition, including excluded candidates. Keep the reference unchanged if any work remains deferred or unresolved. A PR is a durable proposal, not a merged improvement: explain that advancing now means this range will not be offered again, even if the PR is later closed. Let the user decide whether to wait for merge.
 - Before writing, re-read local and remote refs. If either changed since review began, stop and reconcile; do not overwrite another reviewer's progress. Verify the current local checkpoint is an ancestor of the proposed target.
-- After approval, use the tool to update the local reference:
+- After approval, use `template-reverse-sync` in the same environment to update the local reference:
 
 ```sh
 template-reverse-sync --directory "$PROJECT" --checkpoint-ref "$REF" mark-reviewed "$UNTIL"
 ```
 
-- Publish only if requested, using a lease against the **observed remote ref SHA**. It is often the manifest's `since`, but can differ when an explicit baseline was supplied. Use an empty expected SHA only when the remote ref was confirmed absent:
+- For publication, set `PROJECT_REMOTE` to the project remote recorded in step 2 and `EXPECTED_REMOTE_SHA` to its observed checkpoint SHA (or an empty string for confirmed absence). Publish only if requested, using a lease against the **observed remote ref SHA**. It is often the manifest's `since`, but can differ when an explicit baseline was supplied. Use an empty expected SHA only when the remote ref was confirmed absent:
 
 ```sh
 git -C "$PROJECT" push --force-with-lease="$REF:$EXPECTED_REMOTE_SHA" \
