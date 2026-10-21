@@ -2,6 +2,36 @@
 
 A small program to generate projects from templates by replacing key names in files and file/folder names by specific values. Templates to use with the template manager can be found in the [templates project](http://devtools/general/templates).
 
+## Installing the reverse-sync review skill
+
+The package includes an agent skill for promoting reusable project changes back
+into the template the project was created from. After installing template-manager,
+copy the bundled skill beside its global configuration:
+
+```sh
+template-install-skill
+```
+
+This writes `skills/reverse-sync-review/SKILL.md` under the same platform-specific
+configuration directory as `settings.toml` and prints the full path. For example,
+on Linux this is normally `~/.config/template-manager/skills/reverse-sync-review/SKILL.md`.
+No template-manager source checkout or download is needed.
+
+Agents do not automatically discover template-manager's configuration directory.
+Install directly into a personal or project skills directory for discovery:
+
+```sh
+template-install-skill --destination ~/.agents/skills
+template-install-skill --destination .agents/skills
+```
+
+`--destination` names the parent skills directory; the command creates the
+`reverse-sync-review` subdirectory. Choose the discovery directory supported by
+your agent. Re-running the command leaves identical copies alone; use `--force`
+to replace an edited or older copy after upgrading template-manager. Copies are
+updated only when you run the command. The skill is also available directly in
+the installed package at `template_manager/skills/reverse-sync-review/SKILL.md`.
+
 ## Creating a new project from an existing template
 First, install the program using
 ```
