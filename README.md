@@ -6,19 +6,30 @@ A small program to generate projects from templates by replacing key names in fi
 
 The package includes an agent skill for promoting reusable project changes back
 into the template the project was created from. After installing template-manager,
-copy the bundled skill beside its global configuration:
+install the skill for your local coding agents:
 
 ```sh
 template-install-skill
 ```
 
-This writes `skills/reverse-sync-review/SKILL.md` under the same platform-specific
-configuration directory as `settings.toml` and prints the full path. For example,
-on Linux this is normally `~/.config/template-manager/skills/reverse-sync-review/SKILL.md`.
-No template-manager source checkout or download is needed.
+The command detects Claude Code, Codex, and GitHub Copilot through their executables
+on `PATH`, existing configuration directories, or installed extensions in common
+VS Code, VS Code Insiders, and VS Code Server extension directories. It copies
+`reverse-sync-review/SKILL.md` into each detected agent's personal skills directory
+and prints each installed path:
 
-Agents do not automatically discover template-manager's configuration directory.
-Install directly into a personal or project skills directory for discovery:
+| Agent | Default skills directory |
+| --- | --- |
+| [Claude Code](https://code.claude.com/docs/en/skills) | `~/.claude/skills` |
+| [Codex](https://developers.openai.com/codex/skills/) | `~/.agents/skills` |
+| [GitHub Copilot](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills) | `~/.copilot/skills` |
+
+`CLAUDE_CONFIG_DIR` and `COPILOT_HOME` override their respective configuration and
+skills roots. `CODEX_HOME` is checked for Codex detection; Codex's personal skills
+still go into `~/.agents/skills`. Detection does not launch clients or read
+credentials. No detected client means no files are written and the command exits
+with guidance to specify a destination. Other editors or custom layouts may need
+an explicit destination, which bypasses detection:
 
 ```sh
 template-install-skill --destination ~/.agents/skills
@@ -29,7 +40,10 @@ template-install-skill --destination .agents/skills
 `reverse-sync-review` subdirectory. Choose the discovery directory supported by
 your agent. Re-running the command leaves identical copies alone; use `--force`
 to replace an edited or older copy after upgrading template-manager. Copies are
-updated only when you run the command. The skill is also available directly in
+updated only when you run the command. Nothing is copied into template-manager's
+global configuration directory. The skill is bundled as package data (the change
+in `setup.py`); installing the Python package alone does not install it into any
+agent. The skill is also available directly in
 the installed package at `template_manager/skills/reverse-sync-review/SKILL.md`.
 
 ## Creating a new project from an existing template

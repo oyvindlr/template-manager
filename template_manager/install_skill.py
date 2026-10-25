@@ -4,18 +4,43 @@ import argparse
 from importlib.resources import files
 import os
 from pathlib import Path
+import shutil
+import sys
 import tempfile
-
-from platformdirs import user_config_dir
 
 
 SKILL_NAME = "reverse-sync-review"
 
 
-def install_skill(destination=None, *, force=False):
+def detected_agents():
+    """Find local clients without launching them or reading their credentials."""
+    home = Path.home()
+    extensions = [home / folder / "extensions" for folder in (
+        ".vscode", ".vscode-insiders", ".vscode-server", ".vscode-server-insiders",
+    )]
+    clients = (
+        ("Claude Code", "claude", "CLAUDE_CONFIG_DIR", ".claude", "anthropic.claude-code"),
+        ("Codex", "codex", "CODEX_HOME", ".codex", "openai.chatgpt"),
+        ("GitHub Copilot", "copilot", "COPILOT_HOME", ".copilot", "github.copilot"),
+    )
+    destinations = []
+    for name, command, variable, folder, extension in clients:
+        config = Path(os.environ.get(variable) or home / folder).expanduser()
+        prefixes = (extension, "github.copilot-chat") if command == "copilot" else (extension,)
+        has_extension = any(
+            path.is_dir()
+            for root in extensions for prefix in prefixes for path in root.glob(f"{prefix}-*")
+        )
+        if shutil.which(command) or config.is_dir() or has_extension:
+            # Codex's current personal skill directory is shared across agents;
+            # CODEX_HOME selects its configuration, not that skills directory.
+            skills = home / ".agents" / "skills" if command == "codex" else config / "skills"
+            destinations.append((name, skills))
+    return destinations
+
+
+def install_skill(destination, *, force=False):
     """Copy the skill into a skills directory, preserving edited copies by default."""
-    if destination is None:
-        destination = Path(user_config_dir("template-manager")) / "skills"
     target = Path(destination).expanduser() / SKILL_NAME / "SKILL.md"
     content = files("template_manager").joinpath("skills", SKILL_NAME, "SKILL.md").read_bytes()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -44,22 +69,31 @@ def install_skill(destination=None, *, force=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Install the bundled reverse-sync-review agent skill."
+        description="Install the bundled reverse-sync-review skill for detected Claude Code, "
+                    "Codex, and GitHub Copilot clients."
     )
     parser.add_argument(
         "--destination", type=Path,
-        help="Skills directory (default: skills/ beside template-manager's global settings.toml). "
-             "Use ~/.agents/skills for personal agent discovery or .agents/skills for a project.",
+        help="Install only into this skills directory instead of detecting clients "
+             "(for example, .agents/skills for a project).",
     )
     parser.add_argument("--force", action="store_true", help="Replace an existing edited skill")
     args = parser.parse_args(argv)
-    try:
-        target = install_skill(args.destination, force=args.force)
-    except OSError as error:
-        parser.error(str(error))
-    print(f"Skill installed at {target}")
-    if args.destination is None:
-        print("For agent discovery, also run: template-install-skill --destination ~/.agents/skills")
+    destinations = [("Custom", args.destination)] if args.destination is not None else detected_agents()
+    if not destinations:
+        parser.error("No Claude Code, Codex, or GitHub Copilot installation detected. "
+                     "Use --destination PATH to specify a skills directory.")
+    failed = False
+    for name, destination in destinations:
+        try:
+            target = install_skill(destination, force=args.force)
+        except OSError as error:
+            print(f"{name}: {error}", file=sys.stderr)
+            failed = True
+        else:
+            print(f"{name}: Skill installed at {target}")
+    if failed:
+        parser.exit(1)
 
 
 def entry_point():
