@@ -208,6 +208,38 @@ changes. It stores the last reviewed project commit in the custom Git ref
 `refs/template-manager/reverse-sync/reviewed`, without adding a file or commit to
 the project. Extraction never advances this checkpoint.
 
+For an agent-assisted review, prefer `review`. It adds repository, template,
+checkpoint, commit, classification, and per-file diff statistics to the bundle:
+
+```sh
+template-reverse-sync review --until HEAD -o reverse-sync-review
+```
+
+If the checkpoint is absent, `review` defaults to the first merge commit after
+the earliest project commit containing `.template_settings.toml`. This supports
+projects that merged a separately generated template history into their existing
+history. Override the heuristic with `--since` when it is not the intended
+baseline. `extract` retains its stricter behavior and requires either a checkpoint
+or explicit `--since`.
+
+The review bundle contains:
+
+- `review.json`: machine-readable review context and full changed-path inventory.
+- `review.md`: compact review table and suggested next steps.
+- `changes.diff`: changes selected by the candidate heuristics.
+- `all-changes.diff`: the complete committed net diff for selective inspection.
+
+Each inventory entry includes a lightweight classification hint and diff
+statistics. Hints are triage aids, not final dispositions. The report also resolves
+the local and selected remote checkpoint without treating access errors as absence,
+and resolves the intended template PR base (`main` by default):
+
+```sh
+template-reverse-sync review --remote origin --template-base main
+template-reverse-sync review --since <explicit-start> --until <target-commit>
+template-reverse-sync --version
+```
+
 Initialize the checkpoint once, choosing the project commit from which review
 should begin (for example, its initial generated commit):
 

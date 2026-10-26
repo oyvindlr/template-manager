@@ -220,3 +220,74 @@ def test_cli_failure_does_not_create_output(project, tmp_path, capsys):
     assert exc.value.code == 1
     assert "first use" in capsys.readouterr().err
     assert not output.exists()
+
+
+def test_review_bundle_contains_agent_ready_context(project, tmp_path):
+    repo, base = project
+    (repo / "demo.py").write_text("reusable improvement\n")
+    (repo / "app.py").write_text("domain change\n")
+    target = commit(repo)
+
+    bundle = tmp_path / "review"
+    sync.main([
+        "-d", str(repo), "review", "--since", base, "--until", target,
+        "--remote", "", "-o", str(bundle),
+    ])
+
+    report = json.loads((bundle / "review.json").read_text())
+    files = {file["paths"][0]: file for file in report["files"]}
+    assert report["schema_version"] == 2
+    assert report["since"] == base
+    assert report["until"] == target
+    assert report["baseline_source"]["kind"] == "explicit"
+    assert report["project"]["status"]["clean"]
+    assert report["template"]["revision"]
+    assert report["checkpoint"]["local"] is None
+    assert report["checkpoint"]["remote"]["status"] == "not-checked"
+    assert files["demo.py"]["classification_hint"] == "likely-template-relevant"
+    assert files["demo.py"]["stats"] == {
+        "additions": 1, "deletions": 1, "binary": False,
+    }
+    assert files["app.py"]["classification_hint"] == "likely-project-specific"
+    assert "reusable improvement" in (bundle / "changes.diff").read_text()
+    assert "domain change" not in (bundle / "changes.diff").read_text()
+    assert "domain change" in (bundle / "all-changes.diff").read_text()
+    assert "Suggested next steps" in (bundle / "review.md").read_text()
+
+
+def test_review_finds_first_merge_after_template_baseline(project, tmp_path):
+    source_repo, _ = project
+    settings = (source_repo / sync.SETTINGS).read_text()
+    repo = tmp_path / "merged-project"
+    init(repo)
+    (repo / "application.txt").write_text("application history\n")
+    commit(repo)
+    git(repo, "branch", "-M", "main")
+
+    git(repo, "checkout", "--orphan", "generated")
+    git(repo, "rm", "-rf", ".")
+    (repo / sync.SETTINGS).write_text(settings)
+    (repo / "demo.py").write_text("generated\n")
+    template_baseline = commit(repo)
+
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--allow-unrelated-histories", "--no-edit", "generated")
+    first_merge = git(repo, "rev-parse", "HEAD")
+    (repo / "demo.py").write_text("improved\n")
+    target = commit(repo)
+
+    _, _, report = sync.review(repo, until=target, remote=None)
+
+    assert report["since"] == first_merge
+    assert report["baseline_source"] == {
+        "kind": "first-merge-after-template-baseline",
+        "template_baseline": template_baseline,
+    }
+    assert report["until"] == target
+
+
+def test_cli_version(capsys):
+    with pytest.raises(SystemExit) as exc:
+        sync.main(["--version"])
+    assert exc.value.code == 0
+    assert sync.__version__.strip() in capsys.readouterr().out
