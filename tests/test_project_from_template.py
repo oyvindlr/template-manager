@@ -251,10 +251,13 @@ def test_new_project_created_from_git_repo(tmp_path, defaultargs, git_test_repo_
     assert tomlfile["git_commit"] == "078b406"
 
 
-@pytest.mark.skipif(not sys.platform.startswith("win"), reason="Having trouble with this on devtools, because the test data resides in the real repo")
-def test_project_settings_in_toml_file(tmp_path):    
+def test_project_settings_in_toml_file(tmp_path, git_test_repo_path):
+    settings = toml.load("tests/data/.template_settings.toml")
+    settings["template"] = git_test_repo_path
+    settings_path = tmp_path / "settings.toml"
+    settings_path.write_text(toml.dumps(settings), encoding="utf-8")
     args = argparse.Namespace()
-    args.settings_toml = "tests/data/.template_settings.toml"
+    args.settings_toml = str(settings_path)
     args.variables = None
     args.output_path = tmp_path
     
@@ -262,7 +265,9 @@ def test_project_settings_in_toml_file(tmp_path):
 
     tomlfile = get_toml(out_path)
 
-    assert tomlfile["template"] == "tests/data/git_template"
+    assert tomlfile["template"] == git_test_repo_path
+    assert tomlfile["project"] == settings["project"]
+    assert tomlfile["git_commit"] == "078b406"
 
 
 

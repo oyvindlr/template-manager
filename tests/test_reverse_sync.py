@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -107,7 +108,7 @@ def test_legacy_relative_template_path_resolves_from_project_parent(project):
 def test_renames_globs_and_unusual_filenames(project):
     repo, base = project
     git(repo, "mv", "demo.py", "renamed.py")
-    weird = "config\twith\nnewline.json"
+    weird = "config with spaces.json"
     (repo / weird).write_text("{}\n")
     (repo / "[abc].ini").write_text("value=1\n")
     (repo / "a.ini").write_text("value=2\n")
@@ -122,6 +123,17 @@ def test_renames_globs_and_unusual_filenames(project):
     assert b"value=2" not in patch
     assert b"feature" in patch
     assert any(f["paths"] == [weird] for f in manifest["files"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows forbids tabs and newlines in filenames")
+def test_control_characters_in_filenames(project):
+    repo, base = project
+    filename = "config\twith\nnewline.json"
+    (repo / filename).write_text("{}\n")
+    commit(repo)
+    patch, manifest = sync.extract(repo, since=base)
+    assert b"{}" in patch
+    assert any(file["paths"] == [filename] and file["included"] for file in manifest["files"])
 
 
 def test_reverts_disappear_from_net_diff(project):
@@ -185,9 +197,10 @@ def test_saved_date_binary_and_file_mode(project):
     script.write_text("echo build\n")
     (repo / "tool.bin").write_bytes(b"\x00before")
     base = commit(repo)
-    script.chmod(0o755)
     (repo / "tool.bin").write_bytes(b"\x00after")
-    commit(repo)
+    git(repo, "add", "--all")
+    git(repo, "update-index", "--chmod=+x", script.name)
+    git(repo, "commit", "-qm", "change")
     patch, manifest = sync.extract(repo, since=base)
     assert b"old mode 100644" in patch
     assert b"new mode 100755" in patch
