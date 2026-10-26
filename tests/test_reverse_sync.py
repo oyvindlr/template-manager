@@ -1,7 +1,9 @@
 """Exercise extraction and checkpoint handling using real local Git history."""
 
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -107,7 +109,7 @@ def test_legacy_relative_template_path_resolves_from_project_parent(project):
 def test_renames_globs_and_unusual_filenames(project):
     repo, base = project
     git(repo, "mv", "demo.py", "renamed.py")
-    weird = "config\twith\nnewline.json"
+    weird = "config with spaces.json"
     (repo / weird).write_text("{}\n")
     (repo / "[abc].ini").write_text("value=1\n")
     (repo / "a.ini").write_text("value=2\n")
@@ -122,6 +124,34 @@ def test_renames_globs_and_unusual_filenames(project):
     assert b"value=2" not in patch
     assert b"feature" in patch
     assert any(f["paths"] == [weird] for f in manifest["files"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows forbids tabs and newlines in filenames")
+def test_control_characters_in_filenames(project):
+    repo, base = project
+    filename = "config\twith\nnewline.json"
+    (repo / filename).write_text("{}\n")
+    commit(repo)
+    patch, manifest = sync.extract(repo, since=base)
+    assert b"{}" in patch
+    assert any(file["paths"] == [filename] and file["included"] for file in manifest["files"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows filenames are Unicode")
+def test_review_escapes_non_utf8_filenames_in_markdown(project, tmp_path):
+    repo, base = project
+    filename = b"invalid-\xff.json"
+    with open(os.fsencode(repo) + b"/" + filename, "wb") as file:
+        file.write(b"{}\n")
+    target = commit(repo)
+
+    bundle = tmp_path / "review"
+    sync.main([
+        "-d", str(repo), "review", "--since", base, "--until", target,
+        "--remote", "", "-o", str(bundle),
+    ])
+
+    assert b"invalid-\\udcff.json" in (bundle / "review.md").read_bytes()
 
 
 def test_reverts_disappear_from_net_diff(project):
@@ -185,9 +215,10 @@ def test_saved_date_binary_and_file_mode(project):
     script.write_text("echo build\n")
     (repo / "tool.bin").write_bytes(b"\x00before")
     base = commit(repo)
-    script.chmod(0o755)
     (repo / "tool.bin").write_bytes(b"\x00after")
-    commit(repo)
+    git(repo, "add", "--all")
+    git(repo, "update-index", "--chmod=+x", script.name)
+    git(repo, "commit", "-qm", "change")
     patch, manifest = sync.extract(repo, since=base)
     assert b"old mode 100644" in patch
     assert b"new mode 100755" in patch
@@ -220,3 +251,84 @@ def test_cli_failure_does_not_create_output(project, tmp_path, capsys):
     assert exc.value.code == 1
     assert "first use" in capsys.readouterr().err
     assert not output.exists()
+
+
+def test_review_bundle_contains_agent_ready_context(project, tmp_path):
+    repo, base = project
+    (repo / "demo.py").write_text("reusable improvement\n")
+    (repo / "app.py").write_text("domain change\n")
+    target = commit(repo)
+
+    bundle = tmp_path / "review"
+    sync.main([
+        "-d", str(repo), "review", "--since", base, "--until", target,
+        "--remote", "", "-o", str(bundle),
+    ])
+
+    report = json.loads((bundle / "review.json").read_text())
+    files = {file["paths"][0]: file for file in report["files"]}
+    assert report["schema_version"] == 2
+    assert report["since"] == base
+    assert report["until"] == target
+    assert report["baseline_source"]["kind"] == "explicit"
+    assert report["project"]["status"]["clean"]
+    assert report["template"]["revision"]
+    assert report["checkpoint"]["local"] is None
+    assert report["checkpoint"]["remote"]["status"] == "not-checked"
+    assert files["demo.py"]["classification_hint"] == "likely-template-relevant"
+    assert files["demo.py"]["stats"] == {
+        "additions": 1, "deletions": 1, "binary": False,
+    }
+    assert files["app.py"]["classification_hint"] == "likely-project-specific"
+    assert "reusable improvement" in (bundle / "changes.diff").read_text()
+    assert "domain change" not in (bundle / "changes.diff").read_text()
+    assert "domain change" in (bundle / "all-changes.diff").read_text()
+    assert "Suggested next steps" in (bundle / "review.md").read_text()
+
+
+def test_review_finds_first_merge_after_template_baseline(project, tmp_path):
+    source_repo, _ = project
+    settings = (source_repo / sync.SETTINGS).read_text()
+    repo = tmp_path / "merged-project"
+    init(repo)
+    (repo / "application.txt").write_text("application history\n")
+    commit(repo)
+    git(repo, "branch", "-M", "main")
+
+    git(repo, "checkout", "--orphan", "generated")
+    git(repo, "rm", "-rf", ".")
+    (repo / sync.SETTINGS).write_text(settings)
+    (repo / "demo.py").write_text("generated\n")
+    template_baseline = commit(repo)
+
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--allow-unrelated-histories", "--no-edit", "generated")
+    first_merge = git(repo, "rev-parse", "HEAD")
+    (repo / "demo.py").write_text("improved\n")
+    target = commit(repo)
+
+    _, _, report = sync.review(repo, until=target, remote=None)
+
+    assert report["since"] == first_merge
+    assert report["baseline_source"] == {
+        "kind": "first-merge-after-template-baseline",
+        "template_baseline": template_baseline,
+    }
+    assert report["until"] == target
+
+
+def test_review_rejects_dangling_checkpoint(project):
+    repo, target = project
+    checkpoint = repo / ".git" / sync.DEFAULT_REF
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("1" * 40 + "\n")
+
+    with pytest.raises(sync.ReverseSyncError, match="Cannot resolve"):
+        sync.review(repo, until=target, remote=None)
+
+
+def test_cli_version(capsys):
+    with pytest.raises(SystemExit) as exc:
+        sync.main(["--version"])
+    assert exc.value.code == 0
+    assert sync.__version__.strip() in capsys.readouterr().out
