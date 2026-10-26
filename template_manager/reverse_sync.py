@@ -60,6 +60,16 @@ def _optional_commit(repo, revision):
         return None
 
 
+def _optional_ref_commit(repo, ref):
+    result = subprocess.run(
+        ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", ref],
+        capture_output=True,
+    )
+    if result.returncode == 1:
+        return None
+    return _commit(repo, ref)
+
+
 def _ancestor(repo, before, after):
     try:
         _git(repo, "merge-base", "--is-ancestor", before, after)
@@ -151,7 +161,7 @@ def _first_merge_after_template_baseline(repo, until):
 def _resolve_review_since(repo, until, checkpoint_ref, since, strategy):
     if since:
         return _commit(repo, since), {"kind": "explicit", "value": since}
-    checkpoint = _optional_commit(repo, checkpoint_ref)
+    checkpoint = _optional_ref_commit(repo, checkpoint_ref)
     if checkpoint:
         return checkpoint, {"kind": "checkpoint", "value": checkpoint_ref}
     if strategy == "first-merge-after-template-baseline":
@@ -431,7 +441,7 @@ def review(repo, until="HEAD", checkpoint_ref=DEFAULT_REF, since=None,
         _commit_info(repo, commit)
         for commit in reported_shas
     ]
-    local_checkpoint = _optional_commit(repo, checkpoint_ref)
+    local_checkpoint = _optional_ref_commit(repo, checkpoint_ref)
     report.update({
         "schema_version": 2,
         "tool_version": __version__.strip(),

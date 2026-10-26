@@ -299,6 +299,16 @@ def test_review_finds_first_merge_after_template_baseline(project, tmp_path):
     assert report["until"] == target
 
 
+def test_review_rejects_dangling_checkpoint(project):
+    repo, target = project
+    checkpoint = repo / ".git" / sync.DEFAULT_REF
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("1" * 40 + "\n")
+
+    with pytest.raises(sync.ReverseSyncError, match="Cannot resolve"):
+        sync.review(repo, until=target, remote=None)
+
+
 def test_cli_version(capsys):
     with pytest.raises(SystemExit) as exc:
         sync.main(["--version"])
