@@ -1,6 +1,7 @@
 """Exercise extraction and checkpoint handling using real local Git history."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -134,6 +135,23 @@ def test_control_characters_in_filenames(project):
     patch, manifest = sync.extract(repo, since=base)
     assert b"{}" in patch
     assert any(file["paths"] == [filename] and file["included"] for file in manifest["files"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows filenames are Unicode")
+def test_review_escapes_non_utf8_filenames_in_markdown(project, tmp_path):
+    repo, base = project
+    filename = b"invalid-\xff.json"
+    with open(os.fsencode(repo) + b"/" + filename, "wb") as file:
+        file.write(b"{}\n")
+    target = commit(repo)
+
+    bundle = tmp_path / "review"
+    sync.main([
+        "-d", str(repo), "review", "--since", base, "--until", target,
+        "--remote", "", "-o", str(bundle),
+    ])
+
+    assert b"invalid-\\udcff.json" in (bundle / "review.md").read_bytes()
 
 
 def test_reverts_disappear_from_net_diff(project):

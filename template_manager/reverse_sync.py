@@ -566,7 +566,8 @@ def main(argv=None):
                 json.dumps(report, indent=2, ensure_ascii=True) + "\n",
                 encoding="utf-8")
             (args.output_path / "review.md").write_text(
-                _review_markdown(report), encoding="utf-8")
+                _review_markdown(report), encoding="utf-8",
+                errors="backslashreplace")
             print(
                 f"Prepared {report['summary']['included']} of "
                 f"{report['summary']['changed_files']} changes for review; "
