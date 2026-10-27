@@ -222,7 +222,7 @@ def test_saved_date_binary_and_file_mode(project):
     patch, manifest = sync.extract(repo, since=base)
     assert b"old mode 100644" in patch
     assert b"new mode 100755" in patch
-    assert b"Binary files" in patch
+    assert b"GIT binary patch" in patch
     assert all(f["included"] for f in manifest["files"])
     assert sync.extract(repo, since=base) == (patch, manifest)
 

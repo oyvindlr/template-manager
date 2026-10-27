@@ -142,7 +142,7 @@ def test_conditional_directory_exclusion(generate, prefix, enabled):
 
 def test_missing_conditional_flag_excludes_descendants(generate):
     output = generate("{{ missing }}", filename="{% if enabled %}optional{% endif %}/{{ missing }}.txt")
-    assert {path.name for path in output.iterdir()} == {"binary.dat", ".template_settings.toml"}
+    assert {path.name for path in output.iterdir()} == {"binary.dat", ".template_settings.toml", ".template_render_manifest.json"}
 
 
 def test_empty_filename_is_excluded(generate):
@@ -183,7 +183,7 @@ def test_fully_excluded_template_still_saves_settings(tmp_path):
         "Project", "--template", str(template), "-o", str(tmp_path / "output"),
     ], {"default_template_repo": None, "author": None, "email": None})
     output = generator._build(args)
-    assert {path.name for path in output.iterdir()} == {".template_settings.toml"}
+    assert {path.name for path in output.iterdir()} == {".template_settings.toml", ".template_render_manifest.json"}
 
 
 @pytest.mark.parametrize("initial, updated", [("legacy", "cookiecutter"), ("cookiecutter", "legacy")])

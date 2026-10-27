@@ -5,12 +5,13 @@ import shutil
 import os
 import toml
 import argparse
+import json
 import subprocess
 from template_manager import project_from_template
 
 
 @pytest.mark.parametrize("template_changed", [False, True])
-def test_update_unchanged_project(tmp_path, capsys, template_changed):
+def test_update_unchanged_project(tmp_path, capsys, monkeypatch, template_changed):
     template = tmp_path / "template"
     template.mkdir()
 
@@ -36,6 +37,20 @@ def test_update_unchanged_project(tmp_path, capsys, template_changed):
         run_git("add", "--all")
         run_git("commit", "-m", "Update template")
 
+    write_result = update_template._write_result
+    writes = []
+
+    def write_with_manifest(source, destination):
+        # Provenance must be part of the recovery-protected result, rather than
+        # written separately after the project's rollback copy is removed.
+        manifest = (source / ".template_render_manifest.json").read_bytes()
+        settings = toml.load(source / ".template_settings.toml")
+        assert json.loads(manifest)["template_revision"] == settings["git_commit"]
+        write_result(source, destination)
+        assert (destination / ".template_render_manifest.json").read_bytes() == manifest
+        writes.append(destination)
+
+    monkeypatch.setattr(update_template, "_write_result", write_with_manifest)
     for _ in range(2):
         update_template.main(["-d", str(project)])
         assert (project / "content.txt").read_text() == (
@@ -44,6 +59,7 @@ def test_update_unchanged_project(tmp_path, capsys, template_changed):
         settings = toml.load(project / ".template_settings.toml")
         assert run_git("rev-parse", "HEAD").startswith(settings["git_commit"])
         assert "There were 0 merge conflicts" in capsys.readouterr().out
+    assert writes == [project, project]
 
 @pytest.fixture
 def git_test_repo_path():#PROBLEMATIC: If something goes wrong, we may end with a repo where the "gitdir" folder has been renamed to ".git"

@@ -174,6 +174,10 @@ def _run_update(args, resources):
     os.remove(proj_dir / ".template_settings.toml")
     shutil.copyfile(settings_toml, proj_dir / ".template_settings.toml")
 
+    manifest_name = ".template_render_manifest.json"
+    # Provenance is regenerated metadata, never a three-way-merged source file.
+    (proj_dir / manifest_name).unlink(missing_ok=True)
+
     print("Initializing temporary repository to utilize git merge...")
     git.init(proj_dir)
 
@@ -198,6 +202,8 @@ def _run_update(args, resources):
         project_creation_args.append("--variables")        
         project_creation_args.extend(args.variables)
     other_proj_dir = project_from_template.main(project_creation_args)
+    new_manifest = (other_proj_dir / manifest_name).read_bytes()
+    (other_proj_dir / manifest_name).unlink()
     _overwrite_exclude_git_dir(other_proj_dir, proj_dir)
 
     print("Commiting files to template branch...")
@@ -210,6 +216,7 @@ def _run_update(args, resources):
 
     print("Copying project to temporary repository...")
     _overwrite_exclude_git_dir(args.directory, proj_dir)
+    (proj_dir / manifest_name).unlink(missing_ok=True)
 
     print("Committing existing project into temporary repository...")
     git.add_all(proj_dir)
@@ -219,6 +226,9 @@ def _run_update(args, resources):
     conflicts = git.merge(proj_dir, "template")
     
     print("Copying merged repo contents into local project directory...")
+    # Include refreshed provenance in the protected write so retry/rollback
+    # covers it together with the merged project files.
+    (proj_dir / manifest_name).write_bytes(new_manifest)
     _write_result(proj_dir, args.output_path)
 
     print(f"Merging completed! There were {len(conflicts)} merge conflicts.")

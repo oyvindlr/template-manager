@@ -1,0 +1,4 @@
+# Copy to the template subdirectory as .template-tests.toml. Replace the generated
+# paths below with the real template's paths, using existing template parameters.
+command = ["pwsh", "-NoProfile", "-File", "{template}/tests/Test-GeneratedProject.ps1", "-Output", "{output}", "-InstallerProject", "%project%.Installer/%project%.Installer.wixproj", "-PublishDirectory", "%project%/bin/Release/publish", "-MsiPattern", "%project%.Installer/bin/x64/Release/*.msi"]
+timeout = 600

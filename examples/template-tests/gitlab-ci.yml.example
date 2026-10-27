@@ -1,0 +1,16 @@
+# Add this job to the templates repository and use a Windows runner with Python,
+# PowerShell, the .NET SDK, WiX, and the generated template's prerequisites.
+template-tests:
+  tags: [windows]
+  script:
+    - python -m pip install template-manager
+    - '$reviewOutput = $env:CI_PROJECT_DIR + ''-template-tests-'' + $env:CI_JOB_ID'
+    - 'template-reverse-sync test-template --template ./my-template --settings ./tests/source.toml --alternate-settings ./tests/alternate.toml --workspace $reviewOutput --run-tests'
+    - 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
+  after_script:
+    # Select a project-relative artifact destination if your runner retains it.
+    - '$reviewOutput = $env:CI_PROJECT_DIR + ''-template-tests-'' + $env:CI_JOB_ID'
+    - 'if (Test-Path $reviewOutput) { Copy-Item -Recurse $reviewOutput ./template-test-results }'
+  artifacts:
+    when: always
+    paths: [template-test-results/]
