@@ -37,8 +37,11 @@ def _overwrite_exclude_git_dir(source: Path, dest: Path, source_gitdir = ".git")
 
 def _copy_all_but_one_dir(source: Path, dest: Path, retain_dir: str):
     """
-    Recursively copy contents of `source` into `dest`, skipping any directory
-    whose name equals `retain_dir` (e.g., '.git'), at any depth.
+    Recursively copy contents of `source` into `dest`, skipping the top-level
+    entry whose name equals `retain_dir` (e.g., '.git').
+
+    Nested entries with that name are copied because they may be Git files for
+    submodules or nested worktrees.
     """
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +57,7 @@ def _copy_all_but_one_dir(source: Path, dest: Path, retain_dir: str):
         elif entry.is_dir():
             # Recreate directory and recurse
             target.mkdir(exist_ok=True)
-            _copy_all_but_one_dir(entry, target, retain_dir)
+            _copy_all_but_one_dir(entry, target, retain_dir=None)
         else:
             # Copy file contents and metadata.
             shutil.copy2(entry, target)
