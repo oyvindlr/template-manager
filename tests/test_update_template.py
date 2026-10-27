@@ -5,6 +5,45 @@ import shutil
 import os
 import toml
 import argparse
+import subprocess
+from template_manager import project_from_template
+
+
+@pytest.mark.parametrize("template_changed", [False, True])
+def test_update_unchanged_project(tmp_path, capsys, template_changed):
+    template = tmp_path / "template"
+    template.mkdir()
+
+    def run_git(*args):
+        return subprocess.run(
+            ["git", "-C", str(template), *args],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    run_git("init", "-b", "main")
+    run_git("config", "user.name", "Template Test")
+    run_git("config", "user.email", "test@example.com")
+    (template / "content.txt").write_text("original\n")
+    run_git("add", "--all")
+    run_git("commit", "-m", "Initial template")
+    args = project_from_template._parse_command_line_arguments([
+        "Example", "--template", str(template), "-o", str(tmp_path / "project"),
+        "--no-gitlab-project",
+    ], {"default_template_repo": None, "author": None, "email": None})
+    project = project_from_template._build(args)
+    if template_changed:
+        (template / "content.txt").write_text("updated\n")
+        run_git("add", "--all")
+        run_git("commit", "-m", "Update template")
+
+    for _ in range(2):
+        update_template.main(["-d", str(project)])
+        assert (project / "content.txt").read_text() == (
+            "updated\n" if template_changed else "original\n"
+        )
+        settings = toml.load(project / ".template_settings.toml")
+        assert run_git("rev-parse", "HEAD").startswith(settings["git_commit"])
+        assert "There were 0 merge conflicts" in capsys.readouterr().out
 
 @pytest.fixture
 def git_test_repo_path():#PROBLEMATIC: If something goes wrong, we may end with a repo where the "gitdir" folder has been renamed to ".git"
@@ -41,6 +80,23 @@ def test_copy_overwrite_except_git_dir(tmp_path):
     assert not (dest/"gitdir").exists()
 
     assert (dest/".gitignore").exists()
+
+
+def test_copy_overwrite_preserves_nested_git_file(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    nested = source / "submodule"
+    nested.mkdir(parents=True)
+    (source / ".git").mkdir()
+    (source / ".git" / "config").write_text("top-level metadata")
+    (nested / ".git").write_text("gitdir: ../.git/modules/submodule\n")
+
+    update_template._overwrite_exclude_git_dir(source, destination)
+
+    assert not (destination / ".git").exists()
+    assert (destination / "submodule" / ".git").read_text() == (
+        "gitdir: ../.git/modules/submodule\n"
+    )
 
 
 
@@ -126,18 +182,21 @@ def test_can_add_variables_to_updated_template(tmp_path, git_test_repo_path):
     assert d["VAR2"] == "WORLD"
 
 def test_create_update_in_new_directory(tmp_path, git_test_repo_path):
-    
-    args = ["-d", "tests/data/project_based_on_template", "--commit", "anotherbranch", "-o", str(tmp_path)]
+    source = tmp_path / "source"
+    shutil.copytree("tests/data/project_based_on_template", source)
+    output = tmp_path / "output"
+    args = ["-d", str(source), "--commit", "anotherbranch", "-o", str(output)]
     
     update_template.main(args)
 
-    assert (tmp_path / ".gitignore").exists()
+    assert (output / ".gitignore").exists()
 
     
 def test_create_update_in_nonexistent_directory(git_test_repo_path, tmp_path_factory):
     tmp_path = tmp_path_factory.getbasetemp() / "newdir"
-    
-    args = ["-d", "tests/data/project_based_on_template", "--commit", "anotherbranch", "-o", str(tmp_path)]
+    source = tmp_path_factory.mktemp("source")
+    shutil.copytree("tests/data/project_based_on_template", source, dirs_exist_ok=True)
+    args = ["-d", str(source), "--commit", "anotherbranch", "-o", str(tmp_path)]
     
     update_template.main(args)
 
