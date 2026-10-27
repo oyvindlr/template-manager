@@ -5,6 +5,8 @@ import os
 import os.path
 import re
 import argparse
+import hashlib
+import json
 import toml
 import tempfile
 import shutil
@@ -12,7 +14,7 @@ import datetime
 import platform
 import uuid
 from template_manager import git_wrapper as git
-from template_manager import create_gitlab_project
+from template_manager import create_gitlab_project, __version__
 from platformdirs import user_config_dir
 from importlib.metadata import version
 from .strip import strip_ifs_and_elses
@@ -259,7 +261,7 @@ def _named_uuid(name, args, uuid_values):
     return uuid_values[name]
 
 
-def _replace_filenames(files, vars, outdir: Path, files_basedir, uuid_values=None):
+def _replace_filenames(files, vars, outdir: Path, files_basedir, uuid_values=None, mappings=None):
     if uuid_values is None:
         uuid_values = {}
     outdir.mkdir(parents=True, exist_ok=True)
@@ -294,6 +296,10 @@ def _replace_filenames(files, vars, outdir: Path, files_basedir, uuid_values=Non
         if not filepath.is_dir():
             Path(os.path.dirname(newfilepath)).mkdir(parents = True, exist_ok = True)
             shutil.copy(filepath, newfilepath)
+            if mappings is not None:
+                mappings.append({"template_path": relfile.as_posix(),
+                                 "rendered_path": newfilepath.relative_to(outdir).as_posix(),
+                                 "template_hash": hashlib.sha256(filepath.read_bytes()).hexdigest()})
         else:
             Path(newfilepath).mkdir(parents = True, exist_ok = True) #os.path.dirname cannot figure out if dir or file if path doesn't already exist)
         
@@ -401,10 +407,13 @@ def _edit_settings():
         print(f"Error: Unknown platform {platform.system()}")
 
 
-def _build(args, *, render_date=None):
+def _build(args, *, render_date=None, template_path=None):
     requested_syntax = getattr(args, "template_syntax", None)
+    requested_project = getattr(args, "project", None)
     if hasattr(args, "settings_toml") and args.settings_toml:
         args = _get_arguments_from_toml(args.settings_toml, args)
+        if requested_project:
+            args.project = requested_project
         if requested_syntax in ("legacy", "cookiecutter"):
             args.template_syntax = requested_syntax
 
@@ -414,7 +423,11 @@ def _build(args, *, render_date=None):
     if render_date is not None:
         args.date = render_date
 
-    _find_template_source(args)
+    if template_path is None:
+        _find_template_source(args)
+    else:
+        # Explicit snapshot for reverse-sync validation, including uncommitted edits.
+        args.template_path = Path(template_path)
 
     # Find all variables to be replaced in the template
     files = _list_of_files(args.template_path)
@@ -439,7 +452,8 @@ def _build(args, *, render_date=None):
     args.output_path = _new_path_if_already_exists(args.output_path, args.project_folder)
 
     uuid_values = {}
-    _replace_filenames(files, args, args.output_path, args.template_path, uuid_values)
+    mappings = []
+    _replace_filenames(files, args, args.output_path, args.template_path, uuid_values, mappings)
 
     newfiles = _list_of_files(args.output_path)
 
@@ -449,6 +463,17 @@ def _build(args, *, render_date=None):
 
 
     _create_settings_file(args.output_path, args)
+    for item in mappings:
+        item["rendered_hash"] = hashlib.sha256(
+            (args.output_path / item["rendered_path"]).read_bytes()).hexdigest()
+    manifest = {"schema_version": 1, "renderer_version": __version__.strip(),
+                "template_revision": getattr(args, "git_commit", None),
+                "syntax": args._resolved_template_syntax,
+                "parameters_hash": hashlib.sha256(json.dumps(
+                    _project_settings(args), sort_keys=True).encode()).hexdigest(),
+                "files": mappings}
+    (args.output_path / ".template_render_manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     return args.output_path
 
@@ -468,7 +493,9 @@ def _parse_command_line_arguments(argv, defaults):
         ap = argparse.ArgumentParser(prog=program_name,description=description)    
         
     if not "--settings-toml" in argv and not "-t" in argv and not "--edit-settings" in argv and not "--list-folders" in argv: 
-        ap.add_argument("project",  help="Name of the new project")
+        ap.add_argument("project", help="Name of the new project")
+    else:
+        ap.add_argument("project", nargs="?", help="Override the project name in saved settings")
     ap.add_argument("--template", help="Location of the template, either a directory or a git repository", default= defaults["default_template_repo"],**dirchooser) 
     ap.add_argument("-o", "--output-path", type=Path, help="Path to new project to be created. Default is ./<project name>", **dirchooser)
     ap.add_argument("-d","--description", help="Description of the project")

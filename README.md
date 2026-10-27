@@ -240,31 +240,26 @@ template-reverse-sync review --since <explicit-start> --until <target-commit>
 template-reverse-sync --version
 ```
 
-Initialize the checkpoint once, choosing the project commit from which review
-should begin (for example, its initial generated commit):
+For first use without a checkpoint, extract from an explicit starting commit
+without creating a ref:
 
 ```sh
-template-reverse-sync mark-reviewed <starting-project-commit>
-git push --force-with-lease=refs/template-manager/reverse-sync/reviewed: origin refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
-```
-
-The empty lease requires the remote ref not to exist yet. All checkpoint commands
-update the local ref only; publishing it is an explicit Git operation. Custom refs
-are not fetched by an ordinary clone, so subsequent local or CI runs must fetch it:
-
-```sh
-git fetch origin +refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
-template-reverse-sync extract --until HEAD -o reverse-sync-output
+template-reverse-sync extract --since <starting-project-commit> --until HEAD -o reverse-sync-output
 # Also available without installing the console entry point:
-python -m template_manager.reverse_sync extract
+python -m template_manager.reverse_sync extract --since <starting-project-commit>
 ```
+
+Custom refs are not fetched by ordinary clones. When using the legacy extraction
+interface, fetch the remote checkpoint into a separate observed ref, compare it
+with any local checkpoint, and choose the intended baseline explicitly. Do not
+force-fetch over a local checkpoint. For guarded workspace preparation and
+checkpoint publication, see the automated workflow below.
 
 The output contains `changes.diff` and `manifest.json`. The manifest records full
 start/end commit hashes, included and excluded paths, and selection reasons. The
 diff contains the net changes between those commits, so reverted changes disappear.
 Uncommitted and untracked files are ignored. Both renames and deletions are included;
-binary files are represented by Git's binary-change notice rather than embedded
-contents. Empty output is successful and leaves the checkpoint unchanged.
+binary changes include Git's binary patch data. Empty output is successful and leaves the checkpoint unchanged.
 
 Candidates are files present in the rendered template at either endpoint, common
 infrastructure filenames/directories, and `.toml`, `.ini`, `.yaml`, `.yml`, `.json`,
@@ -290,14 +285,18 @@ fixed fallback values; review the manifest warning about paths containing those
 values. If template settings changed, both rendered path sets are considered, but
 imported template updates are not subtracted from the diff in this initial version.
 
-After reviewing the entire bundle, advance to the **exact `until` SHA in its
-manifest**, even if HEAD has since moved. The old SHA in the lease is the bundle's
-`since` value. This prevents overwriting a checkpoint advanced by another reviewer:
+After reviewing the entire bundle and obtaining explicit approval, advance to
+the **exact `until` SHA**, even if HEAD has since moved. Prepared workspaces use
+the guarded command, which verifies recorded dispositions and remote observations:
 
 ```sh
-template-reverse-sync mark-reviewed <reviewed-until-sha>
-git push --force-with-lease=refs/template-manager/reverse-sync/reviewed:<bundle-since-sha> origin refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
+template-reverse-sync mark-reviewed --from-review /path/to/review/review.json \
+  --push origin --expected-remote <observed-remote-checkpoint-sha>
 ```
+
+The expected remote SHA is its observed value, which need not equal the review's
+`since`. Use an empty value only for confirmed absence. Omit push options for a
+local-only update. The legacy `mark-reviewed <reviewed-until-sha>` is local-only.
 
 Only advance when every change in the range has been dealt with, including rejected
 candidates; leave the checkpoint alone if work is deferred. Backward or divergent
@@ -319,8 +318,8 @@ reverse-sync:
       allow_failure: true
   script:
     - pip install template-manager
-    - git fetch origin +refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/reviewed
-    - template-reverse-sync extract --until "$CI_COMMIT_SHA" -o reverse-sync-output
+    - git fetch origin refs/template-manager/reverse-sync/reviewed:refs/template-manager/reverse-sync/observed
+    - template-reverse-sync extract --since refs/template-manager/reverse-sync/observed --until "$CI_COMMIT_SHA" -o reverse-sync-output
   artifacts:
     paths:
       - reverse-sync-output/
@@ -373,3 +372,135 @@ such as `project_snake` must also be defined there.
 
 #### Important note on creating your own template:
 Since the character "%" is used for variable names, any occurences of this character that should not be replaced need to be escaped. In the file contents, it should be escaped as "\\%". Since "\\" is illegal in file names, the percent sign should be escaped as "^%" in file names (only relevant if any of your files should actually contain the percent-sign after creation). A limitation of this scheme is that you cannot have a variable immediately following a '\\' character in code or a '^' character in file names.
+
+## Automated reverse-sync workspace
+
+The existing `review` and `extract` interfaces remain available. For a resumable
+pipeline, use a fresh workspace outside both source repositories:
+
+```sh
+template-reverse-sync --directory /path/to/project prepare \
+  --since <starting-commit> --until HEAD --remote origin --template-base main \
+  --workspace /path/to/review
+# Omit --since when using an existing checkpoint or the automatic first-merge baseline.
+# Read review.md; set decisions.json dispositions before applying accepted edits.
+template-reverse-sync apply --workspace /path/to/review
+template-reverse-sync validate --workspace /path/to/review --run-tests
+template-reverse-sync publish --workspace /path/to/review --title "Improve generated builds"
+```
+
+`prepare` resolves full SHAs once, caches Git objects by source and renders by
+source tree, tool version, and settings, and creates independent `template`,
+`base`, and `original` checkouts. `workspace.json` records the endpoints, paths,
+branch, commands, checkpoint observations, and publication result. Use `--cache`
+to select a cache directory (default: the platform's template-manager user cache).
+Local and remote checkpoint differences stop preparation for reconciliation;
+a missing checkpoint uses the existing first-merge strategy, or explicit `--since`.
+Uncommitted project edits remain outside the committed review range.
+
+`decisions.json` contains one entry per changed path group, including exclusions.
+Keep the inventory intact and record `accepted`, `excluded`, `already upstream`,
+or `deferred` and a reason. All non-upstream entries initially require review.
+`apply` processes only accepted modifications and preserves existing placeholders.
+It deliberately leaves ambiguous spans, changed upstream files, substitutions,
+conditionals, additions/deletions/renames, binary data, and modes for manual edits.
+Inspect `application` and `reason` after running it. Repeated runs preserve edits.
+Exact rendered matches at the current base receive an `already upstream` hint.
+
+The default alternate fixture changes the project name and its derived forms.
+Pass `--alternate-settings alternate.toml` to prepare, or edit the workspace's
+`alternate-settings.toml`, to change affected custom parameters and exercise flags.
+The overlay cannot change the source location/revision, subdirectory, date, or UUID
+seed during preparation. Additional condition states can be checked with separate
+fixture runs. Review generated settings locally; they may contain private values.
+
+Validation always renders the actual edited snapshot, including uncommitted
+changes. Every run uses fresh generated output; immutable render caching avoids
+repeating generation. It checks text and filenames for simple unresolved
+placeholders and source values in alternate output. Checks are conservative
+heuristics; escaped placeholders or intentional literal examples can be findings.
+`validation.json` and `validation.md` distinguish generation/static checks from
+executed template tests. The base is tested only when the patched fixture fails;
+identical findings and test failures are `pre-existing-failure`, recognizable
+network failures are `environment/network-failure`, differing failures are
+`regression`, and inconclusive baseline errors are `unresolved-failure`.
+Failures return a nonzero CLI exit status. Logs remain in the workspace.
+
+Publication requires resolved dispositions and validation of the current source
+snapshot. Failing validation requires `--draft`. The command retains a binary-capable
+`template.patch`, verifies it against the clean base, commits/pushes without force,
+and creates or updates a PR/MR through authenticated `gh`/`glab` CLIs. Choose
+`--provider github|gitlab` when autodetection from the template URL is unsuitable.
+It never merges or advances the project checkpoint. On failure, the patch, local
+branch, and any pushed branch remain available for recovery.
+
+After explicit approval, advance and optionally publish the **review's exact
+until SHA**, not the latest HEAD:
+
+```sh
+template-reverse-sync --directory /path/to/project mark-reviewed \
+  --from-review /path/to/review/review.json --push origin --expected-remote <observed-sha>
+```
+
+Omit both push options for a local update. Use `--expected-remote ''` only for
+recorded absence. All entries need final dispositions; accepted changes require
+a recorded PR/MR and the expected published branch commit. Changed local/remote
+observations stop the operation. A remote push uses an explicit lease; push failure
+reports local success separately. The legacy `mark-reviewed <commit>` remains
+available for deliberate local-only operations.
+
+`template-reverse-sync preflight --remote origin --timeout 20` times a read-only
+Git connectivity check and distinguishes common TLS, DNS, authentication, and
+timeout failures. It does not change certificates or disable TLS verification.
+Informational X.509 messages alone are not certificate failures.
+
+### Render provenance and CLI settings
+
+Generation now writes `.template_render_manifest.json`: schema/renderer version,
+pinned template revision, effective settings hash, and per-file template/rendered
+paths and SHA-256 hashes. It stores no raw parameter values. Reverse extraction
+uses compatible historical mappings and falls back to rendering for older projects.
+`template-update` refreshes this generated metadata without three-way merging it.
+The manifest describes template output, not subsequent application edits.
+
+A project name is now accepted with saved settings:
+
+```sh
+template-gen "Alternate Name" --settings-toml source.toml -o ./alternate --no-gitlab-project
+```
+
+The explicit positional name overrides the saved name; derived names are recomputed.
+Other saved-settings precedence is unchanged.
+
+### Template test contract and CI
+
+Place `.template-tests.toml` in the template subdirectory:
+
+```toml
+command = ["python", "{template}/tests/check_generated.py", "{output}"]
+timeout = 300
+```
+
+The command is an argv array, executed without a shell from the generated output
+root. The contract is rendered with each fixture, so existing template parameters
+can be used in its arguments. `{template}` points to the actual template snapshot; `{output}` points to a
+fresh generated project. Tests run for both source and alternate fixtures. Review
+the contract/scripts, then pass `--run-tests` to authorize their execution. No
+contract means generation/static checks only. Avoid secrets in test output; logs
+remain local. Exclude test tooling from published artifacts as appropriate for the
+template. The same scripts work in template CI without a project Git history:
+
+```sh
+template-reverse-sync test-template --template ./my-template \
+  --settings ./tests/source.toml --alternate-settings ./tests/alternate.toml \
+  --workspace ../template-test-output --run-tests
+```
+
+A template CI job should install its actual build dependencies, run this command
+on each PR/MR and the main branch, and retain `validation.json`, `validation.md`,
+and logs on failure. Use a fresh workspace each job. Test the installer from clean
+output, including RID-specific restore/publish, stale publish-file cleanup, MSI
+existence, and framework-dependent output excluding `hostfxr.dll`. Ready-to-adapt
+PowerShell and CI examples are in `examples/template-tests/`; they require the
+actual template's project names/build paths and a Windows toolchain. They are
+examples, not claims that a Windows installer was built in template-manager CI.

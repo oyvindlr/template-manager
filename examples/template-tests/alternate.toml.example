@@ -1,0 +1,8 @@
+project = "Alternate Worker"
+description = "Alternate fixture"
+author = "Alternate Author"
+email = "alternate@example.invalid"
+template_syntax = "auto"
+uuid_seed = "template-test"
+date = "2001-02-03"
+# Change every affected custom parameter; exercise optional flags in both states.

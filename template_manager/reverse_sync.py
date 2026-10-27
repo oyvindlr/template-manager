@@ -49,7 +49,7 @@ def _commit(repo, revision):
     except ReverseSyncError as exc:
         raise ReverseSyncError(
             f"Cannot resolve {revision!r}. Fetch the required history and checkpoint. "
-            "For first use, run 'template-reverse-sync mark-reviewed <starting-commit>'."
+            "For first use, pass --since <starting-commit> without changing the checkpoint."
         ) from exc
 
 
@@ -204,16 +204,26 @@ def _classification_hint(file):
 def _diff_stats(repo, before, after, paths):
     output = _git(repo, "diff", "--numstat", "-z", "--find-renames",
                   before, after, "--", *paths)
-    fields = output.split(b"\0", 1)[0].split(b"\t", 2)
-    if len(fields) < 2:
-        return {"additions": 0, "deletions": 0, "binary": False}
-    added, deleted = fields[:2]
-    binary = added == b"-" or deleted == b"-"
-    return {
-        "additions": 0 if binary else int(added),
-        "deletions": 0 if binary else int(deleted),
-        "binary": binary,
-    }
+    fields = output.split(b"\0")
+    additions = deletions = 0
+    binary = False
+    index = 0
+    while index < len(fields) - 1:
+        row = fields[index].split(b"\t", 2)
+        index += 1
+        if len(row) != 3:
+            continue
+        added, deleted, name = row
+        # Rename records have an empty path followed by old/new NUL fields.
+        if not name:
+            index += 2
+        if added == b"-" or deleted == b"-":
+            binary = True
+        else:
+            additions += int(added)
+            deletions += int(deleted)
+    return {"additions": additions, "deletions": deletions, "binary": binary}
+
 
 
 def _repo_status(repo):
@@ -365,9 +375,19 @@ def extract(repo, until="HEAD", checkpoint_ref=DEFAULT_REF, since=None,
     after = _commit(repo, until)
     _ancestor(repo, before, after)
     old_settings, new_settings = _settings(repo, before), _settings(repo, after)
-    template_paths = _template_paths(repo, old_settings)
+    def paths_at(commit, settings):
+        try:
+            manifest = json.loads(_git(repo, "show", f"{commit}:.template_render_manifest.json"))
+            pin = str(toml.loads(settings).get("git_commit", ""))
+            revision = str(manifest.get("template_revision") or "")
+            if manifest.get("schema_version") == 1 and pin and revision == pin:
+                return {item["rendered_path"] for item in manifest["files"]}
+        except (ReverseSyncError, ValueError, KeyError, TypeError):
+            pass
+        return _template_paths(repo, settings)
+    template_paths = paths_at(before, old_settings)
     if old_settings != new_settings:
-        template_paths |= _template_paths(repo, new_settings)
+        template_paths |= paths_at(after, new_settings)
     # NUL records handle spaces, tabs and newlines in Git filenames.
     records = _git(repo, "diff", "--name-status", "-z", "--find-renames",
                    before, after, "--").split(b"\0")
@@ -392,7 +412,7 @@ def extract(repo, until="HEAD", checkpoint_ref=DEFAULT_REF, since=None,
     # stay together, including moves out of a template/infrastructure path.
     patch = b"".join(
         _git(repo, "diff", "--no-ext-diff", "--no-textconv", "--no-color",
-             "--find-renames", "--src-prefix=a/", "--dst-prefix=b/",
+             "--find-renames", "--binary", "--src-prefix=a/", "--dst-prefix=b/",
              before, after, "--", *file["paths"])
         for file in files if file["included"]
     )
@@ -421,7 +441,7 @@ def review(repo, until="HEAD", checkpoint_ref=DEFAULT_REF, since=None,
         repo, after, checkpoint_ref, before, includes, excludes)
     all_patch = _git(
         repo, "diff", "--no-ext-diff", "--no-textconv", "--no-color",
-        "--find-renames", "--src-prefix=a/", "--dst-prefix=b/",
+        "--find-renames", "--binary", "--src-prefix=a/", "--dst-prefix=b/",
         before, after, "--",
     )
     for file in report["files"]:
@@ -538,12 +558,77 @@ def main(argv=None):
         "--template-base", default="main",
         help="Intended template pull-request base to resolve and report")
     mark = commands.add_parser("mark-reviewed", help="Explicitly update the local checkpoint ref")
-    mark.add_argument("commit", help="Exact commit reviewed, normally manifest.json's until SHA")
+    mark.add_argument("commit", nargs="?", help="Exact reviewed commit (legacy local-only mode)")
+    mark.add_argument("--from-review", type=Path, help="Prepared workspace review.json; verify dispositions and refs")
+    mark.add_argument("--push", help="Publish checkpoint to the recorded remote")
+    mark.add_argument("--expected-remote", help="Observed remote SHA, empty only for confirmed absence")
+    prepare_parser = commands.add_parser("prepare", help="Prepare an isolated proposal workspace")
+    prepare_parser.add_argument("--workspace", type=Path, required=True)
+    prepare_parser.add_argument("--since")
+    prepare_parser.add_argument("--until", default="HEAD")
+    prepare_parser.add_argument("--remote", default="origin")
+    prepare_parser.add_argument("--template-base", default="main")
+    prepare_parser.add_argument("--cache", type=Path)
+    prepare_parser.add_argument("--alternate-settings", type=Path)
+    prepare_parser.add_argument("--include", action="append", default=[])
+    prepare_parser.add_argument("--exclude", action="append", default=[])
+    for name in ("apply", "validate", "publish"):
+        sub = commands.add_parser(name)
+        sub.add_argument("--workspace", required=True, type=Path)
+        if name == "validate":
+            sub.add_argument("--run-tests", action="store_true", help="Execute the inspected template test contract")
+        if name == "publish":
+            sub.add_argument("--title", default="Promote reusable project improvements")
+            sub.add_argument("--draft", action="store_true")
+            sub.add_argument("--provider", choices=["github", "gitlab"])
+    template_test = commands.add_parser("test-template", help="Run source/alternate fixtures in template CI")
+    template_test.add_argument("--template", type=Path, required=True)
+    template_test.add_argument("--settings", type=Path, required=True)
+    template_test.add_argument("--alternate-settings", type=Path, required=True)
+    template_test.add_argument("--workspace", type=Path, required=True)
+    template_test.add_argument("--cache", type=Path)
+    template_test.add_argument("--run-tests", action="store_true")
+    network = commands.add_parser("preflight", help="Time Git access without changing TLS settings")
+    network.add_argument("--remote", default="origin")
+    network.add_argument("--timeout", type=float, default=20)
     args = parser.parse_args(argv)
     try:
-        if args.command == "mark-reviewed":
-            target = mark_reviewed(args.directory, args.commit, args.checkpoint_ref)
-            print(f"{args.checkpoint_ref} -> {target} (local ref only)")
+        from template_manager import reverse_workspace as workflow
+        if args.command == "prepare":
+            workflow.prepare(args.directory, args.workspace, args.since, args.until,
+                             args.remote, args.template_base, args.checkpoint_ref,
+                             args.cache, args.alternate_settings, args.include, args.exclude)
+            print(f"Workspace: {args.workspace}. Read review.md and decisions.json. Checkpoint unchanged.")
+        elif args.command in ("apply", "validate", "publish"):
+            if args.command == "apply":
+                result = workflow.apply(args.workspace)
+            elif args.command == "validate":
+                result = workflow.validate(args.workspace, args.run_tests)
+            else:
+                result = workflow.publish(args.workspace, args.title, args.draft, args.provider)
+            print(json.dumps(result, indent=2))
+            if args.command == "validate" and not result['passed']:
+                return 1
+        elif args.command == "test-template":
+            result = workflow.test_template(args.template, args.settings, args.alternate_settings,
+                                            args.workspace, args.run_tests, args.cache)
+            print(json.dumps(result, indent=2))
+            return 0 if result['passed'] else 1
+        elif args.command == "preflight":
+            result = workflow.preflight(args.directory, args.remote, args.timeout)
+            print(json.dumps(result, indent=2))
+            return 0 if result['status'] == 'passed' else 1
+        elif args.command == "mark-reviewed":
+            if args.from_review:
+                if args.commit:
+                    raise ReverseSyncError("Use either a commit or --from-review.")
+                target = workflow.checkpoint_from_review(args.directory, args.from_review,
+                                                        args.push, args.expected_remote)
+            else:
+                if not args.commit or args.push or args.expected_remote is not None:
+                    raise ReverseSyncError("Checkpoint publishing requires --from-review.")
+                target = mark_reviewed(args.directory, args.commit, args.checkpoint_ref)
+            print(f"Checkpoint -> {target} ({'published' if args.push else 'local ref only'})")
         elif args.command == "extract":
             patch, manifest = extract(args.directory, args.until, args.checkpoint_ref,
                                       args.since, args.include, args.exclude)
@@ -573,12 +658,12 @@ def main(argv=None):
                 f"{report['summary']['changed_files']} changes for review; "
                 f"bundle: {args.output_path}. Checkpoint unchanged.")
     except (ReverseSyncError, GitError, project_from_template.TemplateError,
-            OSError, ValueError) as exc:
+            OSError, ValueError, subprocess.TimeoutExpired) as exc:
         parser.exit(1, f"Error: {exc}\n")
 
 
 def entry_point():
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]))
 
 
 if __name__ == "__main__":

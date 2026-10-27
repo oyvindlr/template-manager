@@ -1,0 +1,8 @@
+project = "Sample Service"
+description = "Template source fixture"
+author = "Template Test"
+email = "template-test@example.invalid"
+template_syntax = "auto"
+uuid_seed = "template-test"
+date = "2001-02-03"
+# Add all other values required by the actual template.

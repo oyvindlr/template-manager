@@ -1,95 +1,77 @@
 ---
 name: reverse-sync-review
-description: Update a project's source template with reusable improvements from recent project changes. Use when reviewing changes since a reverse-sync checkpoint or promoting project improvements back into the template.
+description: Update a project's source template with reusable improvements from committed project changes, using template-manager's automated reverse-sync workspace.
 ---
 
 # Reverse sync review
 
-Use recent committed changes in a project to update the template the project was created from. Identify reusable improvements, adapt them to the template's parameters, test the result, and open a template pull request.
+Promote reusable improvements with a durable template PR. Use deterministic commands for setup, mapping, validation, publication, and checkpoint updates; spend review time on classification and ambiguous edits. Read repository instructions and preserve unrelated work. Review committed changes only.
 
-**template-manager** is the Python command-line tool used to generate the project from that template. Prefer `template-reverse-sync review`, which produces the primary evidence for this workflow; use `template-gen` for targeted generated-project validation. Optimize for a useful, durable template proposal rather than exhaustive or perfect reverse engineering.
+## 1. Prepare once
 
-## 1. Identify the project, template, and review range
-
-- Read repository instructions. Preserve existing work; use separate worktrees or temporary directories for template edits and generated tests.
-- Set these shell variables for the examples: `PROJECT` is the project's absolute repository path; `UNTIL` is the full target commit SHA, resolved once; `REF` is `refs/template-manager/reverse-sync/reviewed` unless another ref under `refs/template-manager/` is selected; `PROJECT_REMOTE` is the review remote; and `TEMPLATE_BASE` is the intended template PR base.
-- Run `template-reverse-sync --version`, then let the review report identify settings, repository state, template source/revision/base, and local/remote checkpoint state.
-- When no checkpoint exists, accept the command's `first-merge-after-template-baseline` baseline if it matches the project history. Ask the user only when the report fails to identify one or the suggested merge is clearly wrong; rerun with `--since`.
-- Resolve divergent checkpoints, ambiguous remotes, or access errors with the user. Access errors do not establish absence.
-
-## 2. Extract and review changes
-
-Set `BUNDLE` to a fresh absolute directory outside both repositories. Global options precede the subcommand:
+Run `template-reverse-sync --version` and `template-reverse-sync prepare --help` in the project's supported environment. If the console script is unavailable, use `python -m template_manager.reverse_sync`. Do not independently rediscover information already in the report.
 
 ```sh
-template-reverse-sync --directory "$PROJECT" --checkpoint-ref "$REF" review \
-  --until "$UNTIL" --remote "$PROJECT_REMOTE" --template-base "$TEMPLATE_BASE" \
-  -o "$BUNDLE"
+template-reverse-sync --directory "$PROJECT" prepare \
+  --until HEAD --remote origin --template-base main --workspace "$WORKSPACE"
 ```
 
-If the console entry point is unavailable, use `python -m template_manager.reverse_sync` in the same environment. If the module is also missing, resolve the supported installation before proceeding.
+Use a fresh absolute workspace outside both repositories. `prepare` freezes full endpoint SHAs, caches template objects/renders, creates isolated proposal/base/original checkouts, renders pinned/current templates, and writes `review.md`, `review.json`, `decisions.json`, settings fixtures, and `workspace.json`. Existing checkpoints take precedence; without one, the existing first-merge-after-template-baseline strategy applies. If it cannot resolve a sensible baseline, ask for a starting commit and rerun with `--since`. Reconcile differing local/remote checkpoints before continuing. Access errors never mean absence. Checkpoints remain unchanged.
 
-Read `review.md` first and use `review.json` as the authoritative structured context. Verify its endpoints and baseline source. Read `changes.diff` for selected candidates.
+For different values of affected custom parameters, pass a TOML overlay with `--alternate-settings` or edit the workspace's `alternate-settings.toml`. The default changes the project name and derived forms only. Exercise affected flags in both states, using extra fixture runs when necessary. CLI custom values are strings.
 
-- Start with entries classified `likely-template-relevant` or `ambiguous`.
-- Treat classification hints as triage only. Inspect `likely-project-specific` entries in `all-changes.diff` only when their path, statistics, commit subject, or relationship to an accepted change suggests reusable infrastructure.
-- Group related files into logical changes and assign one disposition per group. It is acceptable to disposition obviously domain-specific entries together.
-- Read surrounding project/template code only for accepted or genuinely uncertain changes. Do not independently repeat repository, checkpoint, settings, commit, or inventory discovery already present in the report.
-- Account for report warnings, parameterized paths, settings changes, renames, modes, and binary entries. Defer anything that cannot be assessed safely.
+## 2. Classify, apply, and resolve exceptions
 
-Produce a compact table of each logical change, its classification, reason, template destination, parameter proposal, and disposition:
+Read `review.md` and `decisions.json` first, then `changes.diff`. Groups have inventory paths, mapping hints, and a disposition. Exact rendered matches may already be marked `already upstream`; verify they fit the logical change. All other groups start `requires-review`.
 
-- **Project-specific:** application/domain behavior, deployment identities, private endpoints, machine paths, or secrets. Exclude from the template.
-- **Template-relevant:** reusable scaffolding, infrastructure, build/test/CI, documentation, or optional capabilities.
-
-Record dispositions such as `accepted`, `excluded`, `already upstream`, or `deferred`. Resolve only uncertainty that materially affects the patch with the user.
-
-## 3. Adapt accepted changes to the template
-
-- Branch from the intended current template PR base. Map generated paths and hunks back to template source; adapt to upstream changes rather than applying the project diff wholesale.
-- Replace project-specific values in contents and filenames with semantically matching existing parameters or derived names. Keep universal constants literal.
-- Introduce parameters only for useful variation. Document each new parameter's purpose, type, example, default or required status, and supported way to supply it. Preserve the original project's behavior with its values.
-- Follow existing syntax: `%name%` for legacy templates or `{{ name }}` / `{{ cookiecutter.name }}` for Jinja. Preserve escaping, conditionals, file modes, and named UUID identities (`%uuid(name)%` or `{{ uuid('name') }}`).
-- template-manager's Jinja renderer does not load `cookiecutter.json` or run Cookiecutter hooks. CLI custom values are strings; test flag semantics and implement any claimed defaults.
-- Update relevant documentation and tests. Keep project settings, private data, extraction bundles, and generated output out of the template patch. Report generator changes separately.
-- Run `git diff --check`. Retain a standalone patch only when publication fails or the user requests one; a pushed branch and pull request are otherwise the durable proposal.
-
-## 4. Validate generated projects
-
-Use `template-gen` to render the patched template into isolated directories.
-
-- Use temporary settings copies pointing to the intended source, revision, and subdirectory. Saved settings can override CLI arguments. Verify the effective source and parameters; do not assume generation uses uncommitted template edits.
-- Disable remote project creation with `--no-gitlab-project`. Control rendering date and UUID seed for meaningful comparisons.
-- Render once with the source project's values and once with different values for affected parameters. Check contents and filenames for leaked project values, unresolved placeholders, and inconsistent identifiers.
-- Render the unmodified base only when the change affects rendering semantics, the patched render fails unexpectedly, or a meaningful before/after comparison is needed.
-- Run the smallest generated-project check covering the accepted changes. A successful targeted check is sufficient; broaden only when failures or risk justify it.
-- Record material limitations. Use a draft PR only when a failure makes the proposal unsafe to review, not for minor warnings or incomplete optional validation.
-
-## 5. Publish the proposal
-
-Commit and push only intended template changes, then open or update the matching template PR without an extra generic approval step. Follow any user/repository publication restrictions; do not merge or force-push shared history.
-
-Describe the reusable changes, parameter usage, validation, and material limitations. Return the PR, review table, and exact reviewed SHAs. Return a standalone patch only if one was needed. Avoid exposing private project details. If publication fails, retain local artifacts and report the blocker.
-
-If no template changes remain, skip the empty patch/PR and report that result.
-
-## 6. Ask before updating the checkpoint
-
-After review, explicitly ask whether to create/update `REF` to `review.json`'s **exact `until` SHA**, and whether to publish it to the project remote. State its current value or absence and the PR status. Wait for an explicit answer.
-
-Only advance when every change, including excluded candidates, has a disposition and accepted changes have a durable proposal. Deferred or unresolved work blocks advancement. Explain that advancing excludes this range from future reviews even if the PR is later closed; the user may prefer to wait for merge.
-
-Before writing, re-read local and remote refs. Reconcile any changes since review began, and verify the local checkpoint is an ancestor of the target. After approval:
+- Set each group's disposition to `accepted`, `excluded`, `already upstream`, or `deferred`, with a short reason. Keep every inventory entry in order; related entries may share a reason. Inspect excluded candidates only when their paths/statistics/context suggest reusable infrastructure. Split mixed logical changes in your edits/report while retaining inventory coverage.
+- Accept reusable scaffolding, build/test/CI, and documentation improvements. Exclude domain behavior, deployment identities, secrets, private endpoints, and machine paths. Ask only about ambiguity that affects the patch.
 
 ```sh
-template-reverse-sync --directory "$PROJECT" --checkpoint-ref "$REF" mark-reviewed "$UNTIL"
+template-reverse-sync apply --workspace "$WORKSPACE"
 ```
 
-Publish only if requested. Set `PROJECT_REMOTE` to the recorded project remote and `EXPECTED_REMOTE_SHA` to its observed checkpoint SHA; use an empty string only for confirmed absence:
+`apply` only changes accepted, uniquely mapped literal text spans. Read the remaining `application: requires-review` reasons and edit the isolated `template` checkout directly. Additions, deletions, renames, modes, binary changes, conditionals, changed upstream code, and ambiguous substitutions need manual adaptation. Do not apply the project diff wholesale.
+
+Preserve existing placeholders, syntax, conditionals, modes, and named UUID identities. Reuse semantically matching parameters/derived names. Document meaningful new parameters with purpose, example, type/string semantics, and actual defaults or required inputs. Jinja mode does not load cookiecutter.json or run Cookiecutter hooks. Universal constants stay literal. Keep project settings, private data, and review artifacts out of the template patch. Report generator changes separately.
+
+## 3. Validate
+
+Inspect `.template-tests.toml` and its referenced scripts before executing them. Then run:
 
 ```sh
-git -C "$PROJECT" push --force-with-lease="$REF:$EXPECTED_REMOTE_SHA" \
-  "$PROJECT_REMOTE" "$REF:$REF"
+template-reverse-sync validate --workspace "$WORKSPACE" --run-tests
 ```
 
-If the lease fails, fetch and reconcile instead of forcing. Report the actual local and remote checkpoint states. If approval is declined, leave them unchanged.
+Without a declared test contract, omit `--run-tests`; the report says `not-declared`, which is generation/static checking rather than build validation. The command renders the actual edited snapshot with source and alternate values into fresh directories, checks placeholders and leaked source values in filenames/content, and runs the declared argv command. It tests the base only on failure. Read `validation.md` and consult JSON/logs for details.
+
+Investigate `regression` and `unresolved-failure`. Record `pre-existing-failure` and `environment/network-failure` with their evidence; do not repeatedly debug them as patch defects. Findings are conservative and may include intentional literal examples; assess them explicitly. Rerun after edits. For network issues, use `preflight --remote <remote> --timeout 20`; preserve TLS verification and distinguish actual errors from informational X.509 messages.
+
+For reusable template CI, use `test-template` with source/alternate settings and the same declared contract; see the README's test contract.
+
+## 4. Publish
+
+Resolve all dispositions before publication; deferred work blocks publication/checkpoint advancement. Run:
+
+```sh
+template-reverse-sync publish --workspace "$WORKSPACE" --title "<reusable improvement>"
+```
+
+This checks the complete patch against its base, retains `template.patch` and `proposal.md`, commits/pushes the isolated branch without force, and creates or updates the matching GitHub PR (`gh`) or GitLab MR (`glab`). Use an authenticated provider CLI; `--provider` selects explicitly. Publication is authorized when this workflow is invoked unless user/repository instructions restrict it. Do not merge. Failed validation requires explicit `--draft`; inspect the failure first. No-change reviews skip publication. If publication fails, keep the workspace, patch, and branch and report the exact blocker.
+
+Return the proposal URL, compact dispositions/parameter changes, validation and limitations, and exact reviewed SHAs. Avoid exposing private project details in a public proposal.
+
+## 5. Ask once about the checkpoint
+
+After review, explicitly ask whether to advance the recorded ref to `review.json`'s exact `until`, and whether to publish it. State current local/remote values, proposed SHA, and PR status. Explain that advancement removes this range from future reviews even if the PR closes; waiting for merge is valid. Wait for an explicit answer. Never change a checkpoint during preparation/publication.
+
+After approval, use the guarded command; do not assemble raw Git ref pushes:
+
+```sh
+template-reverse-sync --directory "$PROJECT" mark-reviewed --from-review "$WORKSPACE/review.json"
+# Only if remote publication was requested; expected SHA comes from review.json.
+template-reverse-sync --directory "$PROJECT" mark-reviewed \
+  --from-review "$WORKSPACE/review.json" --push origin --expected-remote "$OBSERVED_SHA"
+```
+
+Choose one command for the approved scope. An empty expected SHA is valid only for confirmed remote absence. The command verifies all dispositions, durable accepted proposals, exact endpoints, ancestry, unchanged checkpoint observations, and uses a lease. On changed refs/lease failure, reconcile; never force. Report actual local and remote states separately, including local success if remote publication failed. If approval is declined, leave refs unchanged.
