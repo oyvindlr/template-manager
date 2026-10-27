@@ -120,6 +120,17 @@ def test_regression_vs_environment_failure(workspace):
     assert {f['classification'] for f in flow.validate(output, True)['fixtures']} == {'environment/network-failure'}
 
 
+def test_baseline_uses_its_own_rendered_test_contract(workspace):
+    output, *_ = workspace
+    contract(output, "print('OK')\n")
+    (output / 'template' / '.template-tests.toml').write_text(toml.dumps({
+        'command': ['executable-that-does-not-exist']}))
+    result = flow.validate(output, run_tests=True)
+    assert {fixture['classification'] for fixture in result['fixtures']} == {'regression'}
+    assert all(fixture['test']['returncode'] == 127 for fixture in result['fixtures'])
+    assert all(fixture['baseline_test']['returncode'] == 0 for fixture in result['fixtures'])
+
+
 def test_alternate_name_and_content_leaks(workspace):
     output, *_ = workspace
     (output / 'template' / 'Demo.cfg').write_text('Demo\n')
@@ -283,6 +294,41 @@ def test_prepare_never_reuses_existing_workspace(workspace):
     with pytest.raises(FileExistsError):
         flow.prepare(repo, output, since=before, until=after, remote='')
     assert (output / 'workspace.json').exists()
+
+
+def test_prepare_resolves_base_from_local_sources_publication_remote(tmp_path):
+    upstream = tmp_path / 'upstream.git'
+    subprocess.check_call(['git', 'init', '--bare', '-q', str(upstream)])
+    seed = tmp_path / 'seed'
+    init(seed)
+    git(seed, 'checkout', '-b', 'main')
+    (seed / '%project_snake%.txt').write_text('published\n')
+    published = commit(seed)
+    git(seed, 'remote', 'add', 'origin', str(upstream))
+    git(seed, 'push', '-u', 'origin', 'main')
+    git(upstream, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+    subprocess.check_call(['git', 'clone', '-q', str(upstream), str(tmp_path / 'template')])
+    template = tmp_path / 'template'
+    git(template, 'config', 'user.name', 'Test')
+    git(template, 'config', 'user.email', 'test@example.com')
+    (template / '%project_snake%.txt').write_text('unpublished\n')
+    commit(template)
+
+    repo = tmp_path / 'project'
+    init(repo)
+    (repo / sync.SETTINGS).write_text(toml.dumps({
+        'template': str(template), 'git_commit': published, 'project': 'Demo',
+        'git_folder': '.', 'uuid_seed': 'stable', 'template_syntax': 'legacy'}))
+    (repo / 'demo.txt').write_text('published\n')
+    before = commit(repo)
+    (repo / 'demo.txt').write_text('project change\n')
+    after = commit(repo)
+
+    output = tmp_path / 'review'
+    state = flow.prepare(repo, output, since=before, until=after, remote='',
+                         cache=tmp_path / 'cache')
+    assert state['template_base'] == published
+    assert (output / 'template' / '%project_snake%.txt').read_text() == 'published\n'
 
 
 def test_test_contract_uses_rendered_parameter_values(workspace):

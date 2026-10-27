@@ -113,12 +113,21 @@ def prepare(repo, workspace, since=None, until='HEAD', remote='origin', template
     workspace.mkdir(parents=True, exist_ok=False)
     cache = Path(cache or user_cache_dir('template-manager')).resolve()
     cache.mkdir(parents=True, exist_ok=True)
-    # Cache Git objects by source, but refresh branch refs on every preparation.
+    # Cache the saved source for pinned historical objects. A local source clone may
+    # have unpublished or stale branches, so it must not supply the proposal base.
     repository = cache / ('repo-' + hashlib.sha256(source.encode()).hexdigest())
     if not repository.exists():
         clone(source, repository)
     sync._git(repository, 'fetch', 'origin', '+refs/heads/*:refs/remotes/origin/*', '--tags')
-    base = sync._commit(repository, template_base if re.fullmatch(r'[0-9a-f]{40}', template_base)
+    publication_repository = repository
+    if publication_source != source:
+        publication_repository = cache / ('repo-' + hashlib.sha256(publication_source.encode()).hexdigest())
+        if not publication_repository.exists():
+            clone(publication_source, publication_repository)
+        sync._git(publication_repository, 'fetch', 'origin',
+                  '+refs/heads/*:refs/remotes/origin/*', '--tags')
+    base = sync._commit(publication_repository,
+                        template_base if re.fullmatch(r'[0-9a-f]{40}', template_base)
                         else f'refs/remotes/origin/{template_base}')
     pinned = sync._commit(repository, settings['git_commit'])
     patch, all_patch, report = sync.review(repo, until, checkpoint_ref, since,
@@ -134,8 +143,8 @@ def prepare(repo, workspace, since=None, until='HEAD', remote='origin', template
     write(workspace / 'review.json', report)
     (workspace / 'review.md').write_text(sync._review_markdown(report), encoding='utf-8', errors='backslashreplace')
     branch = 'reverse-sync/' + report['until'][:12]
-    snapshot(repository, base, workspace / 'template', branch)
-    snapshot(repository, base, workspace / 'base')
+    snapshot(publication_repository, base, workspace / 'template', branch)
+    snapshot(publication_repository, base, workspace / 'base')
     snapshot(repository, pinned, workspace / 'original')
     settings = {**settings, 'date': settings.get('date', '1970-01-01'),
                 'uuid_seed': settings.get('uuid_seed', 'reverse-sync-legacy-paths')}
@@ -287,6 +296,19 @@ def run_test(command, output, source, timeout, log):
             'failure_kind': failure_kind(content) if code else None, 'log': str(log)}
 
 
+def rendered_test_contract(output):
+    path = Path(output) / '.template-tests.toml'
+    if not path.exists():
+        return None, 300
+    contract = toml.load(path)
+    command = contract.get('command')
+    if (command is not None
+            and (not isinstance(command, list) or not command
+                 or not all(isinstance(value, str) for value in command))):
+        raise ValueError('Rendered test command must be a nonempty argv array of strings.')
+    return command, contract.get('timeout', 300)
+
+
 def scan(output, source_values, alternate_values):
     findings = []
     leaked = set()
@@ -335,11 +357,11 @@ def validate(workspace, run_tests=False):
             render(source, values, output, Path(state['cache']))
             item['findings'] = scan(output, parameter_values(settings) if label == 'alternate' else {}, parameter_values(values))
             if command:
-                fixture_contract = toml.load(output / '.template-tests.toml')
-                fixture_command = fixture_contract['command']
-                if not isinstance(fixture_command, list) or not fixture_command or not all(isinstance(v, str) for v in fixture_command):
-                    raise ValueError('Rendered test command must be a nonempty argv array of strings.')
-                item['test'] = run_test(fixture_command, output, source, contract.get('timeout', 300), root / 'patched.log')
+                fixture_command, fixture_timeout = rendered_test_contract(output)
+                if fixture_command is None:
+                    raise ValueError('Rendered test contract must declare a command.')
+                item['test'] = run_test(fixture_command, output, source, fixture_timeout,
+                                        root / 'patched.log')
             failed = bool(item['findings']) or item.get('test', {}).get('returncode', 0) != 0
         except (generator.TemplateError, OSError, ValueError) as exc:
             item['error'], failed = str(exc), True
@@ -350,9 +372,13 @@ def validate(workspace, run_tests=False):
                 baseline_findings = scan(baseline, parameter_values(settings) if label == 'alternate' else {}, parameter_values(values))
                 item['baseline_findings'] = baseline_findings
                 if command:
-                    item['baseline_test'] = run_test(fixture_command, baseline, base, contract.get('timeout', 300), root / 'baseline.log')
+                    baseline_command, baseline_timeout = rendered_test_contract(baseline)
+                    if baseline_command:
+                        item['baseline_test'] = run_test(baseline_command, baseline, base,
+                                                         baseline_timeout, root / 'baseline.log')
                 test, baseline_test = item.get('test', {}), item.get('baseline_test', {})
-                if test.get('failure_kind') or baseline_test.get('failure_kind') or test.get('returncode') == 127:
+                if (test.get('failure_kind') or baseline_test.get('failure_kind')
+                        or test.get('returncode') == baseline_test.get('returncode') == 127):
                     item['classification'] = 'environment/network-failure'
                 elif (not item.get('error') and item['findings'] == baseline_findings
                       and test.get('returncode', 0) == baseline_test.get('returncode', 0)
