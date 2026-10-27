@@ -59,3 +59,19 @@ def test_is_branch(git_repo, tmp_path):
     git.clone(git_repo, tmp_path)
     assert git.is_branch(tmp_path,"main")
     assert not git.is_branch(tmp_path,"ae48153")
+
+
+def test_empty_commit_requires_opt_in(git_repo):
+    before = git.get_current_commit_hash(git_repo)
+    with pytest.raises(git.GitError):
+        git.commit(git_repo, "Empty snapshot")
+    assert git.get_current_commit_hash(git_repo) == before
+
+    git.commit(git_repo, "Empty snapshot", allow_empty=True)
+    assert git.get_current_commit_hash(git_repo) != before
+    assert not git.has_local_changes(git_repo)
+
+
+def test_allow_empty_commit_still_raises_for_invalid_repo(tmp_path):
+    with pytest.raises(git.GitError):
+        git.commit(tmp_path, "Empty snapshot", allow_empty=True)

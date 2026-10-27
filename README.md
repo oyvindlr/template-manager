@@ -201,6 +201,19 @@ template-gen "My project" --template ./my-template --uuid-seed "my-project-seed"
 Using the same seed and name produces the same UUID, even in separate projects.
 Keep the saved seed and placeholder names unchanged to preserve IDs across updates.
 
+### Updating a project
+
+Run `template-update -d ./my-project` to merge the latest template into a project.
+Commit or stash changes first: the command exits with a warning if the project
+repository has staged, unstaged, or untracked files. An existing repository at
+`--output-path` must also be clean.
+
+If files cannot be overwritten, close programs using them and choose **retry**
+or **cancel**. Cancellation restores tracked project files from Git and recovers
+other original files from a temporary backup. Folders without Git are restored
+from the backup. End-of-input or Ctrl+C at the prompt also cancels. If restoration
+fails, the error reports the retained recovery directory for manual recovery.
+
 ### Reverse sync: reviewing project improvements for the template
 
 `template-reverse-sync` extracts a small review bundle from committed project
