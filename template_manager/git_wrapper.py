@@ -6,6 +6,10 @@ class GitError(Exception):
     pass
 
 
+class DirtyRepositoryError(GitError):
+    pass
+
+
 def raise_giterror(error, result):
     output = result.stderr if result.stderr != "" else result.stdout
     raise GitError(f'{error}\nGit output:\n{output}')
@@ -59,6 +63,38 @@ def dir_contains_repo(local_repo):
     result = subprocess.run(['git', '-C', local_repo, 'rev-parse'])
     return result.returncode == 0
 
+
+def is_work_tree(local_repo):
+    result = subprocess.run(
+        ['git', '-C', local_repo, 'rev-parse', '--is-inside-work-tree'],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == 'true'
+
+
+def require_clean(local_repo):
+    result = subprocess.run(
+        ['git', '-C', local_repo, 'status', '--porcelain', '--untracked-files=all'],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise_giterror(f'Could not check repository status in {local_repo}.', result)
+    if result.stdout:
+        raise DirtyRepositoryError(
+            f'Repository in {local_repo} has uncommitted changes '
+            '(including untracked files). Commit or stash them before updating.'
+        )
+
+
+def restore_work_tree(local_repo):
+    # Limit restoration to the updated folder, including when it is a subfolder.
+    result = subprocess.run(
+        ['git', '-C', local_repo, 'restore', '--source=HEAD', '--worktree', '--', '.'],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise_giterror(f'Could not restore files in {local_repo} from Git.', result)
+
 def init(dir):
     result = subprocess.run(['git', '-C', dir, 'init', '--initial-branch=main'], capture_output=True, text=True)
     if result.returncode != 0:
@@ -76,8 +112,11 @@ def merge(local_repo, merge_from):
     result = subprocess.run(['git', '-C', local_repo, 'merge', merge_from], capture_output=True, text=True)    
     if result.returncode == 0:
         return []
-    elif result.returncode == 1: #Conflicts
-        return get_conflicted_files(local_repo)
+    elif result.returncode == 1:
+        conflicts = get_conflicted_files(local_repo)
+        if conflicts:
+            return conflicts
+        raise_giterror(f'Could not merge repo {local_repo}', result)
     else:
         raise_giterror(f'Could not merge repo {local_repo}', result)
 
@@ -86,8 +125,11 @@ def checkout(local_repo, branch):
     if result.returncode != 0:        
         raise_giterror(f'Could not check out from repo {local_repo}.', result)
 
-def commit(local_repo, message):
-    result = subprocess.run(['git', '-C', local_repo, 'commit', '-m', message], capture_output=True, text=True)
+def commit(local_repo, message, *, allow_empty=False):
+    command = ['git', '-C', local_repo, 'commit', '-m', message]
+    if allow_empty:
+        command.append('--allow-empty')
+    result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise_giterror(f'Could not commit to repo {local_repo}.', result)
 
@@ -98,9 +140,10 @@ def add_all(local_repo):
     
 def get_conflicted_files(local_repo):
     command = ['git', '-C', local_repo, 'diff', '--name-only', '--diff-filter=U']
-    result = subprocess.run(command, stdout=subprocess.PIPE, text=True)
-    conflicted_files = result.stdout.strip().split('\n')
-    return conflicted_files
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise_giterror(f'Could not list merge conflicts in {local_repo}.', result)
+    return result.stdout.splitlines()
 
 def push(local_repo, remote = None):
     command = ['git', '-C', local_repo, 'push']
