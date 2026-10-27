@@ -82,19 +82,20 @@ def test_copy_overwrite_except_git_dir(tmp_path):
     assert (dest/".gitignore").exists()
 
 
-def test_copy_overwrite_preserves_nested_git_file(tmp_path):
+def test_copy_preserves_nested_git_file(tmp_path):
     source = tmp_path / "source"
-    destination = tmp_path / "destination"
-    nested = source / "submodule"
-    nested.mkdir(parents=True)
-    (source / ".git").mkdir()
-    (source / ".git" / "config").write_text("top-level metadata")
-    (nested / ".git").write_text("gitdir: ../.git/modules/submodule\n")
+    dest = tmp_path / "dest"
+    (source / ".git").mkdir(parents=True)
+    (source / ".git" / "config").write_text("source metadata")
+    (source / "submodule").mkdir()
+    (source / "submodule" / ".git").write_text("gitdir: ../.git/modules/submodule\n")
+    (dest / ".git").mkdir(parents=True)
+    (dest / ".git" / "config").write_text("destination metadata")
 
-    update_template._overwrite_exclude_git_dir(source, destination)
+    update_template._overwrite_exclude_git_dir(source, dest)
 
-    assert not (destination / ".git").exists()
-    assert (destination / "submodule" / ".git").read_text() == (
+    assert (dest / ".git" / "config").read_text() == "destination metadata"
+    assert (dest / "submodule" / ".git").read_text() == (
         "gitdir: ../.git/modules/submodule\n"
     )
 

@@ -39,15 +39,15 @@ def _copy_all_but_one_dir(source: Path, dest: Path, retain_dir: str):
     """
     Recursively copy contents of `source` into `dest`, skipping the top-level
     entry whose name equals `retain_dir` (e.g., '.git').
-
-    Nested entries with that name are copied because they may be Git files for
-    submodules or nested worktrees.
     """
+    _copy_directory_contents(source, dest, retain_dir)
+
+
+def _copy_directory_contents(source: Path, dest: Path, excluded_name=None):
     dest.mkdir(parents=True, exist_ok=True)
 
     for entry in source.iterdir():
-        # Also skip .git files used by linked worktrees.
-        if entry.name == retain_dir:
+        if entry.name == excluded_name:
             continue
 
         target = dest / entry.name
@@ -57,7 +57,7 @@ def _copy_all_but_one_dir(source: Path, dest: Path, retain_dir: str):
         elif entry.is_dir():
             # Recreate directory and recurse
             target.mkdir(exist_ok=True)
-            _copy_all_but_one_dir(entry, target, retain_dir=None)
+            _copy_directory_contents(entry, target)
         else:
             # Copy file contents and metadata.
             shutil.copy2(entry, target)
