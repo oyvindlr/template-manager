@@ -1,5 +1,7 @@
 
 import subprocess
+import os
+from pathlib import Path
 
 
 class GitError(Exception):
@@ -70,6 +72,18 @@ def is_work_tree(local_repo):
         capture_output=True, text=True,
     )
     return result.returncode == 0 and result.stdout.strip() == 'true'
+
+
+def tracked_files(local_repo):
+    """Return tracked paths relative to this directory, without walking untracked trees."""
+    result = subprocess.run(
+        ['git', '-C', local_repo, 'ls-files', '-z', '--cached', '--recurse-submodules'],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise GitError(f'Could not list tracked files in {local_repo}: '
+                       f'{os.fsdecode(result.stderr)}')
+    return {Path(os.fsdecode(name)) for name in result.stdout.split(b'\0') if name}
 
 
 def require_clean(local_repo):

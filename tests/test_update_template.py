@@ -11,7 +11,8 @@ from template_manager import project_from_template
 
 
 @pytest.mark.parametrize("template_changed", [False, True])
-def test_update_unchanged_project(tmp_path, capsys, monkeypatch, template_changed):
+@pytest.mark.parametrize("git_project", [False, True])
+def test_update_unchanged_project(tmp_path, capsys, monkeypatch, template_changed, git_project):
     template = tmp_path / "template"
     template.mkdir()
 
@@ -25,6 +26,7 @@ def test_update_unchanged_project(tmp_path, capsys, monkeypatch, template_change
     run_git("config", "user.name", "Template Test")
     run_git("config", "user.email", "test@example.com")
     (template / "content.txt").write_text("original\n")
+    (template / ".gitignore").write_text("cache/\n")
     run_git("add", "--all")
     run_git("commit", "-m", "Initial template")
     args = project_from_template._parse_command_line_arguments([
@@ -32,6 +34,22 @@ def test_update_unchanged_project(tmp_path, capsys, monkeypatch, template_change
         "--no-gitlab-project",
     ], {"default_template_repo": None, "author": None, "email": None})
     project = project_from_template._build(args)
+    if git_project:
+        subprocess.run(["git", "-C", str(project), "init"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(project), "add", "--all"], check=True)
+        subprocess.run(["git", "-C", str(project), "commit", "-m", "Initial project"],
+                       check=True, capture_output=True)
+        (project / "cache").mkdir()
+        cached_file = project / "cache" / "large-output.bin"
+        cached_file.write_bytes(b"expensive build output")
+        cached_stat = cached_file.stat()
+        copy2 = shutil.copy2
+
+        def copy_without_cache(source, destination, *args, **kwargs):
+            assert Path(source).name != cached_file.name, "Ignored files must never be copied"
+            return copy2(source, destination, *args, **kwargs)
+
+        monkeypatch.setattr(shutil, "copy2", copy_without_cache)
     if template_changed:
         (template / "content.txt").write_text("updated\n")
         run_git("add", "--all")
@@ -59,6 +77,12 @@ def test_update_unchanged_project(tmp_path, capsys, monkeypatch, template_change
         settings = toml.load(project / ".template_settings.toml")
         assert run_git("rev-parse", "HEAD").startswith(settings["git_commit"])
         assert "There were 0 merge conflicts" in capsys.readouterr().out
+        if git_project:
+            assert cached_file.read_bytes() == b"expensive build output"
+            assert cached_file.stat().st_ino == cached_stat.st_ino
+            subprocess.run(["git", "-C", str(project), "add", "--all"], check=True)
+            subprocess.run(["git", "-C", str(project), "commit", "--allow-empty", "-m", "Update"],
+                           check=True, capture_output=True)
     assert writes == [project, project]
 
 @pytest.fixture
