@@ -11,6 +11,7 @@ import template_manager.git_wrapper  as git
 import toml
 import os
 import shutil
+import stat
 from contextlib import ExitStack
 
 
@@ -28,15 +29,48 @@ def _toml_file_with_updated_commit_hash(tomlfile, hash, uuid_seed=None):
 
 
 def _overwrite_exclude_git_dir(source: Path, dest: Path, source_gitdir = ".git", *, remove_files=None):
-    """Replace project files, optionally limiting deletion to managed paths."""
+    """Synchronize project files without replacing existing regular files."""
+    result_files = set(_file_paths(source, source_gitdir))
     if dest.exists():
-        if remove_files is None:
-            _remove_all_but_git_dir(dest)
-        else:
-            _remove_selected_files(dest, remove_files)
+        managed_files = set(_file_paths(dest)) if remove_files is None else remove_files
+        obsolete = managed_files - result_files
+        for name in result_files:
+            entry, target = source / name, dest / name
+            # Symlinks must be replaced rather than followed when writing.
+            if target.is_symlink():
+                if not entry.is_symlink() or os.readlink(entry) != os.readlink(target):
+                    obsolete.add(name)
+            elif target.exists() and (entry.is_symlink() or target.is_dir()):
+                obsolete.add(name)
+        _remove_selected_files(dest, obsolete)
     else:
         dest.mkdir(parents=True)
-    _copy_all_but_one_dir(source, dest, source_gitdir)
+    for name in result_files:
+        entry, target = source / name, dest / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if entry.is_symlink():
+            if not target.is_symlink():
+                target.symlink_to(os.readlink(entry), target_is_directory=entry.is_dir())
+        elif target.is_file() and _same_contents(entry, target):
+            # Ignore timestamp differences, but retain executable/permission changes.
+            if stat.S_IMODE(entry.stat().st_mode) != stat.S_IMODE(target.stat().st_mode):
+                shutil.copystat(entry, target)
+        else:
+            # copy2 opens existing files for writing; it does not unlink them.
+            shutil.copy2(entry, target)
+
+
+def _same_contents(source, destination):
+    """Compare bytes without a stat-based cache (also safe after partial writes)."""
+    if source.stat().st_size != destination.stat().st_size:
+        return False
+    with source.open("rb") as original, destination.open("rb") as existing:
+        while True:
+            chunk = original.read(1024 * 1024)
+            if chunk != existing.read(1024 * 1024):
+                return False
+            if not chunk:
+                return True
 
 
 def _copy_selected_files(source, dest, files):
@@ -52,12 +86,12 @@ def _copy_selected_files(source, dest, files):
             shutil.copy2(entry, target)
 
 
-def _file_paths(root):
+def _file_paths(root, retain_dir=".git"):
     for entry in root.iterdir():
-        if entry.name == ".git":
+        if entry.name == retain_dir:
             continue
         if entry.is_dir() and not entry.is_symlink():
-            for name in _file_paths(entry):
+            for name in _file_paths(entry, retain_dir=None):
                 yield Path(entry.name) / name
         else:
             yield Path(entry.name)
