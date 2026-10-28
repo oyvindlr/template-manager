@@ -27,12 +27,60 @@ def _toml_file_with_updated_commit_hash(tomlfile, hash, uuid_seed=None):
 
 
 
-def _overwrite_exclude_git_dir(source: Path, dest: Path, source_gitdir = ".git"):
+def _overwrite_exclude_git_dir(source: Path, dest: Path, source_gitdir = ".git", *, remove_files=None):
+    """Replace project files, optionally limiting deletion to managed paths."""
     if dest.exists():
-        _remove_all_but_git_dir(dest)
+        if remove_files is None:
+            _remove_all_but_git_dir(dest)
+        else:
+            _remove_selected_files(dest, remove_files)
     else:
         dest.mkdir(parents=True)
     _copy_all_but_one_dir(source, dest, source_gitdir)
+
+
+def _copy_selected_files(source, dest, files):
+    """Copy a Git file list, retaining symlinks and file metadata."""
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in files:
+        entry = source / name
+        target = dest / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if entry.is_symlink():
+            target.symlink_to(os.readlink(entry), target_is_directory=entry.is_dir())
+        else:
+            shutil.copy2(entry, target)
+
+
+def _file_paths(root):
+    for entry in root.iterdir():
+        if entry.name == ".git":
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            for name in _file_paths(entry):
+                yield Path(entry.name) / name
+        else:
+            yield Path(entry.name)
+
+
+def _remove_selected_files(root, files):
+    for name in sorted(files, key=lambda name: len(name.parts), reverse=True):
+        if any((root / parent).is_symlink() or (root / parent).is_file()
+               for parent in name.parents if parent != Path('.')):
+            continue
+        entry = root / name
+        if entry.is_symlink() or entry.is_file():
+            entry.unlink()
+        elif entry.is_dir():
+            # Never recursively delete directories containing ignored files.
+            entry.rmdir()
+        parent = entry.parent
+        while parent != root:
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
 
 
 def _copy_all_but_one_dir(source: Path, dest: Path, retain_dir: str):
@@ -92,14 +140,36 @@ def _write_result(source, destination):
     """Apply merged files, retaining a recovery copy until write or rollback succeeds."""
     existed = destination.exists()
     in_git = existed and git.is_work_tree(destination)
+    remove_files = None
     if in_git:
         git.require_clean(destination)
+        original_files = git.tracked_files(destination)
+        result_files = set(_file_paths(source))
+        # Reject collisions before touching files, including ignored paths.
+        for name in result_files:
+            entry = destination / name
+            if name not in original_files and (entry.exists() or entry.is_symlink()):
+                tracked_directory = (
+                    entry.is_dir() and not entry.is_symlink()
+                    and all(name / child in original_files for child in _file_paths(entry))
+                )
+                if not tracked_directory:
+                    raise git.GitError(f'Updated file would overwrite an untracked file: {entry}')
+            for parent in name.parents:
+                ancestor = destination / parent
+                if ancestor.is_symlink() or ancestor.is_file():
+                    if parent not in original_files:
+                        raise git.GitError(f'Updated file would overwrite an untracked path: {ancestor}')
+        remove_files = original_files | result_files
     recovery = Path(tempfile.mkdtemp(prefix="template-update-recovery-"))
     backup = recovery / "original"
     try:
         if existed:
-            shutil.copytree(destination, backup, symlinks=True,
-                            ignore=shutil.ignore_patterns(".git"))
+            if in_git:
+                _copy_selected_files(destination, backup, original_files)
+            else:
+                shutil.copytree(destination, backup, symlinks=True,
+                                ignore=shutil.ignore_patterns(".git"))
     except BaseException:
         shutil.rmtree(recovery, ignore_errors=True)
         raise
@@ -108,14 +178,14 @@ def _write_result(source, destination):
     try:
         while True:
             try:
-                _overwrite_exclude_git_dir(source, destination)
+                _overwrite_exclude_git_dir(source, destination, remove_files=remove_files)
                 break
             except (OSError, KeyboardInterrupt) as error:
                 if isinstance(error, OSError) and _retry_overwrite(error):
                     continue
                 try:
                     if existed:
-                        _overwrite_exclude_git_dir(backup, destination)
+                        _overwrite_exclude_git_dir(backup, destination, remove_files=remove_files)
                         if in_git:
                             git.restore_work_tree(destination)
                     elif destination.exists():
@@ -215,7 +285,11 @@ def _run_update(args, resources):
     git.checkout(proj_dir, "project")
 
     print("Copying project to temporary repository...")
-    _overwrite_exclude_git_dir(args.directory, proj_dir)
+    if git.is_work_tree(args.directory):
+        _remove_all_but_git_dir(proj_dir)
+        _copy_selected_files(args.directory, proj_dir, git.tracked_files(args.directory))
+    else:
+        _overwrite_exclude_git_dir(args.directory, proj_dir)
     (proj_dir / manifest_name).unlink(missing_ok=True)
 
     print("Committing existing project into temporary repository...")
