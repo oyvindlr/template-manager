@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shutil
 import subprocess
 
@@ -138,6 +139,162 @@ def test_success_leaves_ignored_files_in_place(project, merged, monkeypatch):
     assert ignored.read_text() == "keep"
     assert ignored.stat().st_ino == before.st_ino
     assert not (project / "original.txt").exists()
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_update_regular_file_without_delete_access(project, merged, monkeypatch, changed):
+    target = project / "original.txt"
+    before = target.stat()
+    (merged / target.name).write_text("modified" if changed else "original")
+    unlink = Path.unlink
+    copy2 = shutil.copy2
+
+    def deny_delete(path, *args, **kwargs):
+        if path == target:
+            raise PermissionError("Windows handle denies deletion")
+        return unlink(path, *args, **kwargs)
+
+    def check_copy(source, dest, *args, **kwargs):
+        if Path(dest) == target and not changed:
+            pytest.fail("Unchanged files must not be opened for writing")
+        return copy2(source, dest, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_delete)
+    monkeypatch.setattr(shutil, "copy2", check_copy)
+    update._write_result(merged, project)
+    assert target.read_text() == ("modified" if changed else "original")
+    assert target.stat().st_ino == before.st_ino
+    if not changed:
+        assert target.stat().st_mtime_ns == before.st_mtime_ns
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires Windows file-sharing semantics")
+@pytest.mark.parametrize("changed", [False, True])
+def test_update_with_windows_handle_denying_deletion(project, merged, changed):
+    import ctypes
+    from ctypes import wintypes
+
+    target = project / "original.txt"
+    (merged / target.name).write_text("modified" if changed else "original")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                            wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                            wintypes.HANDLE]
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    close_handle.restype = wintypes.BOOL
+    # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING.
+    # Deliberately omit FILE_SHARE_DELETE, as an IDE's open handle may do.
+    handle = create_file(str(target), 0x80000000, 0x3, None, 3, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        with pytest.raises(PermissionError):
+            target.unlink()
+        update._write_result(merged, project)
+        assert target.read_text() == ("modified" if changed else "original")
+    finally:
+        close_handle(handle)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Requires POSIX executable permissions")
+def test_update_applies_mode_change_without_rewriting_contents(project, merged, monkeypatch):
+    target = project / "original.txt"
+    (merged / target.name).write_text("original")
+    (merged / target.name).chmod(0o755)
+    copy2 = shutil.copy2
+
+    def check_copy(source, dest, *args, **kwargs):
+        assert Path(dest) != target, "Permission changes must not rewrite contents"
+        return copy2(source, dest, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", check_copy)
+    update._write_result(merged, project)
+    assert target.stat().st_mode & 0o777 == 0o755
+    assert target.read_text() == "original"
+
+
+@pytest.mark.parametrize("retry", [False, True])
+def test_partial_in_place_write_can_retry_or_roll_back(project, merged, monkeypatch, retry):
+    target = project / "original.txt"
+    (merged / target.name).write_text("modified")
+    copy2 = shutil.copy2
+    failed = False
+
+    def partial_copy(source, dest, *args, **kwargs):
+        nonlocal failed
+        if Path(dest) == target and not failed:
+            failed = True
+            target.write_text("partial!")  # Same length as the intended contents.
+            raise PermissionError("write interrupted")
+        return copy2(source, dest, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", partial_copy)
+    monkeypatch.setattr("builtins.input", lambda _: "retry" if retry else "cancel")
+    if retry:
+        update._write_result(merged, project)
+        assert target.read_text() == "modified"
+        assert (project / "new.txt").exists()
+    else:
+        with pytest.raises(SystemExit):
+            update._write_result(merged, project)
+        assert target.read_text() == "original"
+        assert not (project / "new.txt").exists()
+        assert run_git(project, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize("old_kind,new_kind", [
+    ("link", "file"), ("file", "link"), ("link", "link"),
+    ("link", "directory"), ("directory", "link"),
+])
+def test_update_symlink_transitions(project, merged, old_kind, new_kind):
+    outside = project.parent / "outside.txt"
+    outside.write_text("do not change")
+
+    def make(root, kind, link_target):
+        path = root / "changing"
+        if kind == "link":
+            path.symlink_to(link_target)
+        elif kind == "directory":
+            path.mkdir()
+            (path / "child.txt").write_text("child")
+        else:
+            path.write_text("regular file")
+
+    make(project, old_kind, outside)
+    make(merged, new_kind, "new-target.txt")
+    run_git(project, "add", "--all")
+    run_git(project, "commit", "-m", "Add changing path")
+    update._write_result(merged, project)
+    assert outside.read_text() == "do not change"
+    target = project / "changing"
+    if new_kind == "link":
+        assert target.is_symlink()
+        assert target.readlink() == Path("new-target.txt")
+    elif new_kind == "directory":
+        assert not target.is_symlink()
+        assert (target / "child.txt").read_text() == "child"
+    else:
+        assert not target.is_symlink()
+        assert target.read_text() == "regular file"
+
+
+def test_unchanged_symlink_is_not_recreated(project, merged, monkeypatch):
+    for root in [project, merged]:
+        (root / "link").symlink_to("missing.txt")
+    run_git(project, "add", "--all")
+    run_git(project, "commit", "-m", "Add link")
+    unlink = Path.unlink
+
+    def deny_delete(path, *args, **kwargs):
+        assert path != project / "link", "Unchanged symlink must be retained"
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_delete)
+    update._write_result(merged, project)
+    assert (project / "link").readlink() == Path("missing.txt")
 
 
 def test_new_template_file_cannot_overwrite_ignored_file(project, merged):

@@ -208,6 +208,14 @@ Commit or stash changes first: the command exits with a warning if the project
 repository has staged, unstaged, or untracked files. An existing repository at
 `--output-path` must also be clean.
 
+Updates leave unchanged files in place and overwrite changed regular files
+without deleting them first. Files are deleted only when removed by the merge
+or replaced by a different kind of entry (for example, a symlink). For Git
+projects, ignored files such as Visual Studio's `.vs` directory and build
+outputs are left untouched during snapshots, backups, updates, and rollback.
+This allows updates while an IDE is open when its file handles permit writing;
+files locked against writing or required deletion can still block an update.
+
 If files cannot be overwritten, close programs using them and choose **retry**
 or **cancel**. Cancellation restores tracked project files from Git and recovers
 other original files from a temporary backup. Folders without Git are restored
