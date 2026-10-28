@@ -182,6 +182,32 @@ def test_copy_only_tracked_files(project, tmp_path, location):
         assert not (destination / "original.txt").exists()
 
 
+def test_copy_tracked_files_skips_uninitialized_submodule(project, tmp_path):
+    submodule = tmp_path / "submodule"
+    submodule.mkdir()
+    run_git(submodule, "init", "-b", "main")
+    run_git(submodule, "config", "user.name", "Test")
+    run_git(submodule, "config", "user.email", "test@example.com")
+    (submodule / "content.txt").write_text("submodule content")
+    run_git(submodule, "add", "--all")
+    run_git(submodule, "commit", "-m", "Initial submodule")
+    subprocess.run(
+        ["git", "-c", "protocol.file.allow=always", "-C", str(project),
+         "submodule", "add", str(submodule), "module"],
+        check=True, capture_output=True, text=True,
+    )
+    run_git(project, "commit", "-m", "Add submodule")
+    run_git(project, "submodule", "deinit", "--force", "module")
+
+    files = git.tracked_files(project)
+    destination = tmp_path / "snapshot"
+    update._copy_selected_files(project, destination, files)
+
+    assert Path("module") not in files
+    assert not (destination / "module").exists()
+    assert (destination / ".gitmodules").is_file()
+
+
 @pytest.mark.parametrize("old_is_directory", [False, True])
 def test_update_can_change_file_to_directory(project, merged, old_is_directory):
     old = project / "changing"

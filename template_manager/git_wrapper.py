@@ -83,7 +83,14 @@ def tracked_files(local_repo):
     if result.returncode != 0:
         raise GitError(f'Could not list tracked files in {local_repo}: '
                        f'{os.fsdecode(result.stderr)}')
-    return {Path(os.fsdecode(name)) for name in result.stdout.split(b'\0') if name}
+    paths = {Path(os.fsdecode(name)) for name in result.stdout.split(b'\0') if name}
+    # An uninitialized submodule is emitted as its gitlink directory even with
+    # --recurse-submodules. It has no files to snapshot and cannot be copied as
+    # a regular file. Keep symlinks that happen to point at directories.
+    return {
+        name for name in paths
+        if not (Path(local_repo, name).is_dir() and not Path(local_repo, name).is_symlink())
+    }
 
 
 def require_clean(local_repo):
